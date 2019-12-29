@@ -1,2 +1,5 @@
 # bstage
-A php library to speed up web app development
+
+A lean php library for developing modern web apps
+
+Documentation to follow...
