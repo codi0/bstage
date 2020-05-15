@@ -1,0 +1,48 @@
+# Allow access
+Order Allow,Deny
+Allow from all
+
+# Set options
+Options -Indexes
+
+# URL rewriting
+<IfModule mod_rewrite.c>
+
+	# Rewrite URLs
+	RewriteEngine On
+	
+	# Set scheme
+	RewriteCond %{HTTPS}s ^(on(s)|offs)$
+	RewriteRule ^ - [e=SCHEME:http%2]
+
+	# Force no www
+	RewriteCond %{HTTP_HOST} ^(www\.)(.*)
+	RewriteCond %{HTTP_HOST} !localhost
+	RewriteRule .* %{ENV:SCHEME}://%2%{REQUEST_URI} [R=301,L] 
+
+	# Force SSL?
+	<ifModule mod_ssl.c>
+		RewriteCond %{HTTPS} off
+		RewriteRule .* https://%{HTTP_HOST}%{REQUEST_URI} [R=301,L] 
+	</IfModule>
+
+	# Force no index.php
+	RewriteCond %{THE_REQUEST} /index\.php [NC]
+	RewriteRule (.*?)index\.php/*(.*) /$1$2 [R=301,L]
+
+	# Deny access to non asset files
+	RewriteCond %{REQUEST_URI} \.([^\/]+)$ [NC]
+	RewriteCond %{REQUEST_URI} !\.(css|js|ico|jpg|jpeg|png|gif|svg|ttf|woff|woff2)$ [NC]
+	RewriteRule .* - [R=404,L]
+
+	# Fix Authorization header
+	RewriteCond %{HTTP:Authorization} !^$
+	RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
+
+	# Route through index.php
+	RewriteCond %{REQUEST_FILENAME} !-f
+	RewriteCond %{REQUEST_FILENAME} !-d
+	RewriteCond %{REQUEST_URI} !\.(css|js|ico|jpg|jpeg|png|gif|svg|ttf|woff|woff2)$ [NC]
+	RewriteRule (.*) index.php/$1 [L]
+
+</IfModule>
