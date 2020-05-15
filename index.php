@@ -13,7 +13,7 @@ $app = bstage('app', [
 //define routes
 $app->route('/', function($request, $response) use($app) {
 	//render view
-	$app->render('home');
+	$app->view('home');
 });
 
 //run app
