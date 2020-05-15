@@ -11,8 +11,9 @@ $app = bstage('app', [
 ]);
 
 //define routes
-$app->route('/', function($request, $response) {
-	echo 'Hello World';
+$app->route('/', function($request, $response) use($app) {
+	//render view
+	$app->render('home');
 });
 
 //run app
