@@ -29,6 +29,10 @@ class Mysqli extends AbstractDb {
 			if($this->dbh && $this->charset) {
 				 mysqli_set_charset($this->dbh, $this->charset);
 			}
+			//set timezone?
+			if($this->dbh) {
+				mysqli_query($this->dbh, "SET time_zone = '" . $this->getTimeOffset() . "'");
+			}
 		}
 		//return
 		return $this->dbh;

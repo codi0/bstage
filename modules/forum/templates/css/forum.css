@@ -1,0 +1,169 @@
+/* GENERAL */
+
+.forum .meta {
+	font-size: 0.85em;
+}
+
+
+/* TOPICS LIST */
+
+.forum .topics {
+	margin: 15px 0;
+}
+
+.forum .topic {
+	display: flex;
+	padding: 12px 0;
+	border-bottom: 1px dotted #ddd;
+}
+
+.forum .topic:last-of-type {
+	border-bottom: none;
+}
+
+.forum .topic .about {
+	flex-grow: 1;
+}
+
+.forum .topic .activity {	
+	margin-left: 30px;
+	min-width: 80px;
+	display: flex;
+	flex-direction: column;
+	justify-content: center;
+	text-align: right;
+}
+
+.forum .topic .author,
+.forum .topic .when,
+.forum .topic .who {
+	padding-top: 2px;
+}
+
+.forum .topic .replies {
+	display: none;
+}
+
+@media screen and (min-width: 40em) {
+
+	.forum .topic .replies {
+		display: inline;
+	}
+
+}
+
+
+/* MESSAGES LIST */
+
+.forum.topic h2 {
+	margin-bottom: 5px;
+}
+
+@media screen and (max-width: 39.999em) {
+
+	.forum {
+		font-size: 15.5px;
+	}
+
+	.forum .message .meta {
+		display: flex;
+		padding: 5px 10px;
+		margin-bottom: 5px;
+		background: #f2f2f2;
+		border-radius: 10px;
+	}
+
+	.forum .message .author {
+		flex-grow: 1;
+	}
+
+	.forum .message .avatar {
+		display: none;
+	}
+
+	.forum .message .time {
+		text-align: right;
+		flex-grow: 1;
+	}
+
+	.forum .message .text {
+		padding: 5px 10px;
+	}
+
+}
+
+@media screen and (min-width: 40em) {
+
+	.forum .message {
+		display: flex;
+		margin-bottom: 10px;
+	}
+
+	.forum .message .meta {
+		flex-basis: 140px;
+		flex-grow: 0;
+		flex-shrink: 0;
+		background: #f6f6f6;
+		padding: 15px;
+		border: 1px solid #eee;
+		border-radius: 10px;
+	}
+
+	.forum .message .avatar {
+		width: 48px;
+		height: 48px;
+		margin: 5px 0;
+	}
+
+	.forum .message .avatar img {
+		width: 100%;
+		height: 100%;
+	}
+
+	.forum .message .time {
+		font-size: 0.85em;
+	}
+
+	.forum .message .text {
+		flex-grow: 1;
+		padding: 15px;
+		margin-left: 15px;
+		border: 1px solid #eee;
+		border-radius: 10px;
+	}
+
+}
+
+
+/* MESSAGE REPLY */
+
+.forum .reply {
+	margin-top: 30px;
+}
+
+.forum .reply .field {
+	padding: 4px 0;
+}
+
+.forum .reply h3  {
+	margin-bottom: 2px;
+}
+
+
+/* ADD TOPIC */
+
+.forum .add {
+	display: inline-block;
+	width: 32px;
+	height: 32px;
+	line-height: 33px;
+	text-align: center;
+	border-radius: 50%;
+	background: var(--primary-color);
+	color: #fff;
+	font-size: 40px;
+	font-weight: 300;
+	position: absolute;
+	top: 18px;
+	right: 20px;
+}

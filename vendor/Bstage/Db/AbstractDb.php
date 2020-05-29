@@ -16,7 +16,6 @@ abstract class AbstractDb {
 
 	protected $prefix = '';
 	protected $charset = 'utf8';
-	protected $schemaFile = '';
 
 	protected $insertId = 0;
 	protected $rowsAffected = 0;
@@ -138,7 +137,7 @@ abstract class AbstractDb {
 		//set vars
 		$table = $this->formatTable($table);
 		//build sql
-		$builder = $this->builder->buildQuery('select', $table, $opts);
+		$builder = $this->builder->query('select', $table, $opts);
 		//get query method
 		$method = $builder['singular'] ? 'getRow' : 'getAll';
 		//get result?
@@ -165,7 +164,7 @@ abstract class AbstractDb {
 		//set vars
 		$table = $this->formatTable($table);
 		//build sql
-		$builder = $this->builder->buildQuery('insert', $table, [
+		$builder = $this->builder->query('insert', $table, [
 			'fields' => $values,
 		]);
 		//valid query?
@@ -185,7 +184,7 @@ abstract class AbstractDb {
 			$opts['where'] = $where;
 		}
 		//build sql
-		$builder = $this->builder->buildQuery('update', $table, $opts);
+		$builder = $this->builder->query('update', $table, $opts);
 		//valid query?
 		if(!$this->query($builder['sql'], $builder['params'])) {
 			return false;
@@ -198,7 +197,7 @@ abstract class AbstractDb {
 		//set vars
 		$table = $this->formatTable($table);
 		//build sql
-		$builder = $this->builder->buildQuery('delete', $table, $opts);
+		$builder = $this->builder->query('delete', $table, $opts);
 		//valid query?
 		if(!$this->query($builder['sql'], $builder['params'])) {
 			return false;
@@ -207,38 +206,23 @@ abstract class AbstractDb {
 		return $this->rowsAffected();
 	}
 
-	public function search($table, $fields, $term, $score=0, array $opts=[]) {
-		//set vars
-		$table = $this->formatTable($table);
-		$fields = $this->builder->buildFields($fields, $table);
-		$term = $this->escape($this->formatSearchTerm($term));
-		//format opts
-		$opts = array_merge([
-			'fields' => [ '*' ],
-			'where' => [],
-		], $opts);
-		//add field
-		$opts['fields'][] = "MATCH($fields) AGAINST('$term' IN BOOLEAN MODE) as score";
-		//add where
-		$opts['where'][] = "MATCH($fields) AGAINST('$term' IN BOOLEAN MODE) > " . (float) $score;
-		//build sql
-		$builder = $this->builder->buildQuery('select', $table, $opts);
-		//run query
-		return $this->getAll($builder['sql'], $builder['params']);
-	}
-
-	public function createSchema() {
-		//has schema file?
-		if(!$this->schemaFile || !is_file($this->schemaFile)) {
-			return false;
+	public function createSchema($schema) {
+		//is file?
+		if(strpos($schema, ' ') === false) {
+			//file exists?
+			if(!is_file($schema)) {
+				return false;
+			}
+			//extract schema
+			$schema = file_get_contents($schema);
 		}
-		//update database schema?
-		if($sql = file_get_contents($this->schemaFile)) {
-			//split queries
-			foreach(explode(';', $sql) as $query) {
-				if($query = trim($query)) {
-					$this->query($query);
-				}
+		//loop through queries
+		foreach(explode(';', $schema) as $query) {
+			//trim query
+			$query = trim($query);
+			//execute query?
+			if(!empty($query)) {
+				$this->query($query);
 			}
 		}
 		//success
@@ -246,12 +230,17 @@ abstract class AbstractDb {
 	}
 
 	protected function formatTable($sql) {
-		//replace {prefix} placeholder
+		//set vars
+		$prefix = $this->prefix;
 		$sql = str_replace('{prefix}', $this->prefix, $sql);
+		//replace variable placeholders
+		$sql = preg_replace_callback('/{([^}|\s]+)}/', function($match) use($prefix) {
+			return $prefix ? ($prefix . $match[1]) : $match[1];
+		}, $sql);
 		//add prefix manually?
-		if($this->prefix && strpos($sql, ' ') === false && strpos($sql, '.') === false) {
-			if(strpos($sql, $this->prefix) !== 0) {
-				$sql = $this->prefix . $sql;
+		if($prefix && strpos($sql, ' ') === false && strpos($sql, '.') === false) {
+			if(strpos($sql, $prefix) !== 0) {
+				$sql = $prefix . $sql;
 			}
 		}
 		//return
@@ -269,28 +258,6 @@ abstract class AbstractDb {
 		return $params;
 	}
 
-	protected function formatSearchTerm($term) {
-		//set vars
-		$quotes = [];
-		$term = str_ireplace([ ' and ', ' or ', ' not ' ], [ ' +', ' ', ' -' ], trim($term));
-		//remove quoted strings
-		$term = preg_replace_callback('/\"([^\"]*)\"/', function($matches) use(&$quotes) {
-			$quotes[] = $matches[0];
-			return '%%' . (count($quotes) - 1) . '%%';
-		}, $term);
-		//simple word stemming
-		$term = preg_replace_callback('/(^|\+|\(|\s)(\w+)/', function($matches) {
-			$stemmed = preg_replace('/(ed|ies|ing|ery)$/i', '', $matches[2]);
-			return $matches[1] . $stemmed . ($matches[2] === $stemmed ? '' : '*');
-		}, $term);
-		//add back quoted strings
-		foreach($quotes as $k => $v) {
-			$term = str_replace('%%' . $k . '%%', $v, $term);
-		}
-		//return
-		return $term;
-	}
-
 	protected function addError($error, $sql) {
 		//add to array
 		$this->errors[] = $error;
@@ -305,6 +272,18 @@ abstract class AbstractDb {
 			}
 			throw new \Exception($error);
 		}
+	}
+
+	protected function getTimeOffset() {
+		//calculate offset
+		$now = new \DateTime();
+		$mins = $now->getOffset() / 60;
+		$sign = ($mins < 0 ? -1 : 1);
+		$mins = abs($mins);
+		$hrs = floor($mins / 60);
+		$mins -= $hrs * 60;
+		//format offset
+		return sprintf('%+d:%02d', $hrs * $sign, $mins);
 	}
 
 }

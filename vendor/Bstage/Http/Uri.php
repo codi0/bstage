@@ -104,8 +104,7 @@ class Uri {
 	public function getPathInfo() {
 		if($this->pathInfo === null) {
 			$basePath = str_replace($_SERVER['DOCUMENT_ROOT'], '', dirname($_SERVER['SCRIPT_FILENAME']));
-			$pathInfo = ltrim(str_replace($basePath, '', $this->path), '/');
-			$this->pathInfo = $pathInfo ? '/' . $pathInfo : '';		
+			$this->pathInfo = rtrim(str_replace($basePath, '', $this->path), '/');
 		}
 		return $this->pathInfo;
 	}

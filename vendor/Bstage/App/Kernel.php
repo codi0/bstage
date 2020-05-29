@@ -7,26 +7,26 @@ class Kernel {
 	private $meta = [];
 
 	public function __construct(array $opts=[]) {
-		//set meta data
+		//set defaults
 		$this->meta = array_merge([
 			'name' => 'app',
 			'version' => '0.0.1',
+			'timezone' => 'UTC',
 			'debug' => true,
+			'mobile' => null,
 			'ssl' => null,
+			'host' => '',
 			'base_url' => '',
 			'base_url_org' => '',
 			'base_dir' => '',
+			'path_info' => '',
+			'inc_paths' => [],
 			'autoload' => true,
-			'autoload_paths' => [],
 			'services' => [],
 			'config' => [],
 			'inc' => false,
 			'run' => false,
 		], $opts);
-		//guess ssl?
-		if($this->meta['ssl'] === null) {
-			$this->meta['ssl'] = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']) ? ($_SERVER['HTTPS'] !== 'off') : ($_SERVER['SERVER_PORT'] === 443);
-		}
 		//guess base dir?
 		if(!$this->meta['base_dir']) {
 			//loop through included files
@@ -37,40 +37,48 @@ class Kernel {
 				}
 			}	
 		}
-		//get current host
-		$host = 'http' . ($this->meta['ssl'] ? 's' : '') . '://' . $_SERVER['HTTP_HOST'];
+		//set include paths
+		$this->meta['inc_paths'] = array_values(array_unique([
+			dirname(get_included_files()[0]), //last loaded dir
+			$this->meta['base_dir'], //base dir
+			dirname(dirname(dirname(__DIR__))), //library dir
+		]));
+		//get base path
+		$basePath = str_replace($_SERVER['DOCUMENT_ROOT'], '', dirname($_SERVER['SCRIPT_FILENAME']));
+		$reqUri = explode('?', $_SERVER['REQUEST_URI'])[0];
+		//set path info
+		$this->meta['path_info'] = $_SERVER['PATH_INFO'] = rtrim(str_replace($basePath, '', $reqUri), '/');
+		//delete orig path info?
+		if(isset($_SERVER['ORIG_PATH_INFO'])) {
+			unset($_SERVER['ORIG_PATH_INFO']);
+		}
+		//guess ssl?
+		if($this->meta['ssl'] === null) {
+			$this->meta['ssl'] = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS']) ? ($_SERVER['HTTPS'] !== 'off') : ($_SERVER['SERVER_PORT'] === 443);
+		}
+		//set host
+		$this->meta['host'] = 'http' . ($this->meta['ssl'] ? 's' : '') . '://' . $_SERVER['HTTP_HOST'];
 		//guess base url?
 		if(!$this->meta['base_url']) {
-			//get current path
-			$path = str_replace($_SERVER['DOCUMENT_ROOT'], '', dirname($_SERVER['SCRIPT_FILENAME']));
 			//update base url
-			$this->meta['base_url'] = $host . '/' . trim($path, '/');
+			$this->meta['base_url'] = $this->meta['host'] . '/' . trim($basePath, '/');
 		}
 		//cache org url
 		$this->meta['base_url_org'] = $this->meta['base_url'];
-		//use autoloader?
-		if($this->meta['autoload']) {
-			//set dirs
-			$dirs = [
-				dirname(get_included_files()[0]) . '/vendor', //last loaded dir
-				$this->meta['base_dir'] . '/vendor', //base dir
-				dirname(dirname(__DIR__)) //library dir
-			];
-			//loop through dirs
-			foreach(array_unique($dirs) as $dir) {
-				$this->autoload($dir, false);
-			}
-		}
-		//basic XSS protection
-		foreach([ 'REQUEST_URI', 'PATH_INFO', 'ORIG_PATH_INFO' ] as $key) {
-			if(isset($_SERVER[$key])) {
-				$_SERVER[$key] = $this->validator->filter($_SERVER[$key]);
-			}
-		}
 		//is script included?
-		$this->meta['inc'] = stripos($host . $_SERVER['REQUEST_URI'], $this->meta['base_url']) !== 0;
-		//handle errors
-		$this->errorHandler->handle();
+		$this->meta['inc'] = stripos($this->meta['host'] . $reqUri, $this->meta['base_url']) !== 0;
+		//set timezone?
+		if($this->meta['timezone']) {
+			date_default_timezone_set($this->meta['timezone']);
+		}
+		//register autoloader?
+		if($this->meta['autoload']) {
+			spl_autoload_register([ $this, 'autoload' ]);
+		}
+		//handle errors?
+		if(isset($this->errorHandler)) {
+			$this->errorHandler->handle();
+		}
 	}
 
 	public function __isset($key) {
@@ -154,35 +162,8 @@ class Kernel {
 		$this->meta['run'] = true;
 		$this->meta['scope'] = $scope;
 		//loop through modules
-		foreach($this->config->get('modules', []) as $name => $scope) {
-			//valid scope?
-			if($scope && $this->meta['scope']) {
-				if(strpos($scope, $this->meta['scope']) === false) {
-					continue;
-				}
-			}
-			//loop through loader paths
-			foreach($this->meta['autoload_paths'] as $path) {
-				//is another module path?
-				if(strpos($path, '/modules/') !== false) {
-					continue;
-				}
-				//get module folder
-				$folder = dirname($path) . '/modules/' . $name;
-				//boostrap file found?
-				if(is_file($folder . '/Bootstrap.php')) {
-					//set autoload path
-					$this->autoload($folder . '/vendor');
-					//add template path?
-					if($this->templates) {
-						$this->templates->addPath($folder . '/templates');
-					}
-					//load module
-					(function($app, $__dir) {
-						include($__dir . '/Bootstrap.php');
-					})($this, $folder);
-				}
-			}
+		foreach($this->config->get('modules', []) as $name => $opts) {
+			$this->module($name);
 		}
 		//EVENT: app.init
 		$this->events->dispatch('app.init');
@@ -192,6 +173,13 @@ class Kernel {
 			$confVersion = $this->config->get('version', 0);
 			//update now?
 			if($confVersion < $this->meta['version']) {
+				//create DB schema?
+				if(isset($this->db)) {
+					//loop through paths
+					foreach($this->meta['inc_paths'] as $path) {
+						$this->db->createSchema($path . '/database/schema.sql');
+					}
+				}
 				//EVENT: app.updating
 				$this->events->dispatch('app.updating', [
 					'from' => $confVersion,
@@ -238,30 +226,62 @@ class Kernel {
 		$this->events->dispatch('app.shutdown');
 	}
 
-	public function autoload($dir, $prepend=false) {
-		//format dir
-		$dir = rtrim($dir, '/');
-		//valid dir?
-		if(!$dir || in_array($dir, $this->meta['autoload_paths']) || !is_dir($dir)) {
-			return false;
-		}
-		//save path
-		if($prepend) {
-			array_unshift($this->meta['autoload_paths'], $dir);
-		} else {
-			$this->meta['autoload_paths'][] = $dir;
-		}
-		//register autoloader
-		return spl_autoload_register(function($class) use($dir) {
-			//guess class separator
-			$sep = (strpos($class, '\\') !== false) ? '\\' : '_';
-			//format class path
-			$file = $dir . '/' . trim(str_replace($sep, '/', $class), '/') . '.php';
-			//file found?
-			if(is_file($file)) {
-				include($file);
+	public function module($name, $required=true) {
+		//cache
+		static $cache = [];
+		//load module?
+		if(!isset($cache[$name])) {
+			//get module opts
+			$opts = $this->config->get("modules.$name") ?: [];
+			//set defaults
+			$opts = array_merge([
+				'scope' => '',
+				'path' => '',
+			], $opts);
+			//valid scope?
+			if($opts['scope'] && $this->meta['scope'] && $opts['scope'] !== $this->meta['scope']) {
+				$cache[$name] = false;
+				return false;
 			}
-		}, true, $prepend);	
+			//valid path?
+			if($opts['path'] && strpos($this->meta['path_info'], $opts['path']) === false) {
+				$cache[$name] = false;
+				return false;
+			}
+			//loop through loader paths
+			foreach($this->meta['inc_paths'] as $path) {
+				//is another module path?
+				if(strpos($path, '/modules/') !== false) {
+					continue;
+				}
+				//get module folder
+				$folder = $path . '/modules/' . $name;
+				//boostrap file found?
+				if(is_file($folder . '/Bootstrap.php')) {
+					//add include path
+					$this->meta['inc_paths'][] = $folder;
+					//load module
+					$cache[$name] = (function($app, $__dir) {
+						return include($__dir . '/Bootstrap.php') ?: true;
+					})($this, $folder);
+					//add template path?
+					if(isset($this->templates)) {
+						$this->templates->addPath($folder . '/templates');
+					}
+				}
+			}
+			//module found?
+			if(!isset($cache[$name])) {
+				//show error?
+				if($required) {
+					throw new \Exception("Module not found: $name");
+				}
+				//failed
+				$cache[$name] = false;
+			}
+		}
+		//return
+		return $cache[$name];
 	}
 
 	public function class($class, $name='') {
@@ -299,47 +319,74 @@ class Kernel {
 	}
 
 	public function file($file, $value=false) {
-		//add file extension?
-		if(strpos($file, '.') === false) {
-			$file = $file . '.php';
+		//set vars
+		$paths = [];
+		//is absolute path?
+		if($file[0] === '/') {
+			//one path
+			$paths[] = $file;
+		} else {
+			//add potential paths
+			foreach($this->meta['inc_paths'] as $path) {
+				$paths[] = $path . '/' . $file;
+			}
 		}
-		//add file path?
-		if($file[0] !== '/') {
-			$file = $this->meta['base_dir'] . '/' . $file;
-		}
-		//perform operation?
-		if($value === true && is_file($file)) {
-			//include file
-			include($file);
-		} else if(is_string($value)) {
-			//save file
-			$dir = dirname($file);
+		//set value?
+		if(is_string($value)) {
+			//get parent dir
+			$dir = dirname($paths[0]);
+			//create dir?
 			if(!is_dir($dir)) {
 				mkdir($dir, 0755, true);
 			}
-			file_put_contents($file, $value);
+			//update file
+			return file_put_contents($paths[0], $value);
 		}
-		//return
-		return $file;
+		//loop through paths
+		foreach($paths as $path) {
+			//file exists?
+			if(!is_file($path)) {
+				continue;
+			}
+			//get file content?
+			if($value === true) {
+				return file_get_contents($path);
+			}
+			//get path
+			return $path;
+		}
+		//not found
+		return false;
 	}
 
 	public function url($url=null, $query=null, $merge=false) {
-		//get host
-		$host = 'http' . ($this->meta['ssl'] ? 's' : '') . '://' . $_SERVER['HTTP_HOST'];
 		//use current url?
 		if($url === null) {
 			$path = explode('?', $_SERVER['REQUEST_URI'])[0];
 			$qs = ($_GET && is_null($query)) ? '?' . http_build_query($_GET) : '';
-			$url = $host . $path . $qs;
+			$url = $this->meta['host'] . $path . $qs;
+		}
+		//is local file?
+		if($url && $url[0] === '/') {
+			//remove web dir
+			$url = str_replace($this->meta['inc_paths'][0] . '/', '', $url);
+			//stop here?
+			if($url[0] === '/' && strpos($url, '.') !== false) {
+				return null;
+			}
 		}
 		//can parse url?
 		if(!is_string($url) || !$parts = parse_url($url)) {
 			return null;
 		}
+		//add redirect?
+		if($url === 'login' && $query === null) {
+			$query = [ 'redirect' => $_SERVER['REQUEST_URI'] ];
+		}
 		//create absolute url?
 		if(!isset($parts['host']) || !$parts['host']) {
 			if($url && $url[0] === '/') {
-				$url = trim($host, '/') . '/' . trim($url, '/');
+				$url = trim($this->meta['host'], '/') . '/' . trim($url, '/');
 			} else {
 				$isFile = strpos($url, '.') !== false;
 				$url = trim($this->meta[$isFile ? 'base_url_org' : 'base_url'], '/') . '/' . trim($url, '/');
@@ -353,6 +400,10 @@ class Kernel {
 		//merge $_GET?
 		if($merge && $_GET) {
 			$query = array_merge($_GET, $query ?: []);
+		}
+		//run filters?
+		if(isset($this->router)) {
+			$url = $this->router->runFilters($url);
 		}
 		//build final url
 		$url = explode('?', trim($url, '/'))[0] . ($query ? '?' . http_build_query($query) : '');
@@ -371,9 +422,8 @@ class Kernel {
 		}
 		//generate url
 		$url = $this->url($url, $query);
-		$host = 'http' . ($this->meta['ssl'] ? 's' : '') . '://' . $_SERVER['HTTP_HOST'];
 		//valid host?
-		if(strpos($url, $host) !== 0) {
+		if(strpos($url, $this->meta['host']) !== 0) {
 			$url = $this->url(null);
 		}
 		//send header
@@ -462,6 +512,23 @@ class Kernel {
 
 	public function view($name, array $params=[]) {
 		return $this->templates->render($name, $params);
+	}
+
+	protected function autoload($class) {
+		//set vars
+		$paths = $this->meta['inc_paths'];
+		$sep = (strpos($class, '\\') !== false) ? '\\' : '_';
+		$classPath = trim(str_replace($sep, '/', $class), '/');
+		//loop through paths
+		foreach($paths as $path) {
+			//build class file path
+			$file = $path . '/vendor/' . $classPath . '.php';
+			//match found?
+			if(is_file($file)) {
+				include($file);
+				break;
+			}
+		}
 	}
 
 }

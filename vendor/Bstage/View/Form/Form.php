@@ -11,11 +11,14 @@ class Form {
 
 	protected $model = [];
 	protected $errors = [];
-	protected $message = 'Form successfully saved';
+	protected $message = '';
 
 	protected $isValid;
-	protected $onSuccess;
 	protected $autosave = true;
+
+	protected $onSave;
+	protected $onSuccess;
+	protected $onError;
 
 	protected $orm;
 	protected $html;
@@ -39,15 +42,19 @@ class Form {
 				$opts['attr'][$k] = $v;
 			}
 		}
-		//lowercase method
-		$opts['attr']['method'] = strtolower($opts['attr']['method']);
 		//set name
 		$opts['name'] = $name;
+		//lowercase method
+		$opts['attr']['method'] = strtolower($opts['attr']['method']);
 		//set properties
 		foreach($opts as $k => $v) {
 			if(property_exists($this, $k)) {
 				$this->$k = $v;
 			}
+		}
+		//set default message?
+		if(!$this->message && $this->attr['method'] === 'post') {
+			$this->message = 'Form successfully saved';
 		}
 	}
 
@@ -180,9 +187,13 @@ class Form {
 			$values[$name] = $this->input->$method($name, [
 				'field' => $name,
 				'label' => isset($opts['label']) ? $opts['label'] : '',
-				'filter' => $filter ?: 'xss',
+				'filter' => $filter,
 				'validate' => $validate,
 			]);
+			//make null?
+			if($values[$name] === '' && in_array('optional', $validate)) {
+				$values[$name] = null;
+			}
 		}
 		//set vars
 		$res = '';
@@ -191,18 +202,8 @@ class Form {
 		$this->values = $values;
 		$this->errors = $this->input->getValidator()->getErrors();
 		$this->isValid = empty($this->errors);
-		//success callback?
-		if($this->isValid && $this->onSuccess) {
-			//execute callback
-			$cb = $this->onSuccess;
-			$res = $cb($this->values, $this->errors, $this->message);
-			//still valid?
-			if($res === false || $this->errors) {
-				$this->isValid = false;
-			}
-		}
 		//save model?
-		if($this->isValid && $this->autosave && $id) {
+		if($this->isValid && $this->model && $this->autosave) {
 			//get result
 			$id = $this->saveModelData($this->values, $this->errors);
 			//save failed?
@@ -211,8 +212,30 @@ class Form {
 				$this->isValid = false;
 			}
 		}
+		//successful submit?
+		if($this->isValid) {
+			//success callback?
+			if($cb = $this->onSuccess) {
+				//execute callback
+				$res = $cb($this->values, $this->errors, $this->message);
+				//still valid?
+				if($res === false || $this->errors) {
+					$this->isValid = false;
+				}
+			}
+		} else {
+			//error callback?
+			if($cb = $this->onError) {
+				//execute callback
+				$res = $cb($this->errors);
+				//update errors?
+				if(is_array($res)) {
+					$this->errors = $res;
+				}
+			}
+		}
 		//redirect user?
-		if($res && filter_var($res, FILTER_VALIDATE_URL)) {
+		if($this->isValid && $res && is_string($res)) {
 			//format url
 			$url = str_replace([ '{id}', urlencode('{id}') ], $id, $res);
 			//headers sent?
@@ -358,13 +381,17 @@ class Form {
 		}
 		//close form
 		$html .= '</form>';
+		//go to form?
+		if($this->errors && $this->attr['method'] === 'post') {
+			$html .= "<script>document.getElementById('" . $this->name . "-form').scrollIntoView();</script>";
+		}
 		//return
 		return $html;
 	}
 
 	protected function formatAttr(array $attr) {
 		//attrs to remove
-		$remove = [ 'name', 'value', 'label', 'error', 'validate', 'filter', 'before', 'after' ];
+		$remove = [ 'name', 'value', 'label', 'error', 'validate', 'filter', 'before', 'after', 'override' ];
 		//loop through attributes
 		foreach($attr as $key => $val) {
 			if(in_array($key, $remove)) {
@@ -400,7 +427,7 @@ class Form {
 		$modelData = $this->model;
 		//has mapper?
 		if($this->orm && $this->orm->has($this->model)) {
-			$modelData = (array) $this->orm->mapper($this->model)->state();
+			$modelData = (array) $this->orm->mapper($this->model)->data();
 		}
 		//return
 		return $modelData;
@@ -409,12 +436,21 @@ class Form {
 	protected function saveModelData($values, &$errors) {
 		//set vars
 		$id = null;
+		//save callback?
+		if($cb = $this->onSave) {
+			//execute callback
+			$values = $cb($values, $errors);
+			//update values?
+			if(!is_array($values)) {
+				throw new \Exception("onSave callback must return an array");
+			}
+		}
 		//has mapper?
-		if($this->orm && $this->orm->has($this->model)) {
+		if($values && $this->orm && $this->orm->has($this->model)) {
 			//get mapper
 			$mapper = $this->orm->mapper($this->model);
 			//attempt save
-			$id = $mapper->inject($this->values)->save();
+			$id = $mapper->inject($values)->save();
 			//get errors
 			$errors = $mapper->errors();
 		}

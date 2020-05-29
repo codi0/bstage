@@ -20,7 +20,7 @@ class Captcha {
 	}
 
 	public function isValid($input) {
-		return $input && (strtolower($input) === strtolower($this->session->get('captcha')));
+		return $input && strcasecmp($input, $this->session->get('captcha')) == 0;
 	}
 
 	public function render(array $opts=array()) {
@@ -28,16 +28,29 @@ class Captcha {
 		$opts = array_merge(array(
 			'format' => 'jpeg',
 			'raw' => false,
+			'reuse' => false,
 			'length' => 6,
 			'width' => 200,
 			'height' => 50,
+			'lines' => 0,
+			'pixels' => 8,
+			'capitalise' => true,
+			'exclude' => [ '0', 'o', 'O', '1', 'i', 'I', 'l' ],
 		), $opts);
+		//reuse code?
+		if($opts['reuse']) {
+			$this->code = $this->session->get('captcha');
+		}
 		//generate code?
 		if(!$this->code) {
 			//generate code
 			$this->code = $this->crypt->nonce(32);
-			$this->code = str_replace([ '0', 'o', 'O', '1', 'i', 'I', 'l' ], '', $this->code);
+			$this->code = str_replace($opts['exclude'], '', $this->code);
 			$this->code = substr($this->code, 0, $opts['length']);
+			//capitalise?
+			if($opts['capitalise']) {
+				$this->code = strtoupper($this->code);
+			}
 			//save to session
 			$this->session->set('captcha', $this->code);
 		}
@@ -52,13 +65,13 @@ class Captcha {
 		//create background
 		imagefilledrectangle($image, 0, 0, $opts['width'], $opts['height'], $bckColour);
 		//add lines?
-		if($isFont) {
-			for($i = 0, $l = mt_rand(4, 6); $i < $l; $i++) {
+		if($isFont && $opts['lines']) {
+			for($i = 0, $l = mt_rand($opts['lines']-1, $opts['lines']+1); $i < $l; $i++) {
 				imageline($image, 0, mt_rand()%50, 250, mt_rand()%50, $lineColour);
 			}
 		}
 		//add random pixels
-		for($i = 0, $l = $opts['width'] * 3; $i < $l; $i++) {
+		for($i = 0, $l = ($opts['width'] * $opts['pixels']); $i < $l; $i++) {
 			imagesetpixel($image, mt_rand()%$opts['width'], mt_rand()%$opts['height'], $pixelColour);
 		}
 		//add text

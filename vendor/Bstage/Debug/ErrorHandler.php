@@ -7,6 +7,9 @@ class ErrorHandler {
 	protected $debug = false;
 	protected $handled = false;
 
+	protected $startTime = 0;
+	protected $startMem = 0;
+
 	protected $prev = null;
 	protected $events = null;
 	protected $logger = null;
@@ -38,6 +41,9 @@ class ErrorHandler {
 				$this->$k = $v;
 			}
 		}
+		//start timer
+		$this->startTime = microtime(true);
+		$this->startMem = memory_get_usage();
 	}
 
 	public function setLogger($logger) {
@@ -118,8 +124,10 @@ class ErrorHandler {
 		$html .= '<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />' . "\n";
 		$html .= '<title>Debug: Error occurred</title>' . "\n";
 		$html .= '<style>' . "\n";
-		$html .= 'html, body { width: 100%; }' . "\n";
+		$html .= '* { box-sizing: border-box; }' . "\n";
+		$html .= 'body { width: 100%; padding: 10px; margin: 0; }' . "\n";
 		$html .= 'a:hover { cursor: pointer; }' . "\n";
+		$html .= 'h1 { margin-top: 0; }' . "\n";
 		$html .= 'table { border: 0; }' . "\n";
 		$html .= 'td { padding: 3px; }' . "\n";
 		$html .= 'td:first-child { width: 170px; }' . "\n";
@@ -160,18 +168,24 @@ class ErrorHandler {
 			//set vars
 			$snippet = '';
 			$line = $v['line'];
-			$contents = file($v['file']);
-			//loop through content
-			for($i = $line - $num; $i <= $line + $num; $i++) {
-				if(isset($contents[$i])) {
-					$snippet .= ($i+1) . ' ' . $contents[$i] . "\n";
+			//parse file?
+			if(strpos($v['file'], ' ') === false) {
+				//get file content
+				$contents = file($v['file']);
+				//loop through content
+				for($i = $line - $num; $i <= $line + $num; $i++) {
+					if(isset($contents[$i])) {
+						$snippet .= ($i+1) . ' ' . $contents[$i] . "\n";
+					}
 				}
 			}
-			//format snippet
-			$snippet = highlight_string('<?php' . "\n" . $snippet, true);
-			$snippet = str_replace('<br /><br />', '<br />', $snippet);
-			$snippet = str_replace('&lt;?php<br />', '', $snippet);
-			$snippet = str_replace('>' . $line . '&nbsp;', '><span style="color:red; font-weight:bold;">' . $line . '</span>&nbsp;', $snippet);
+			//format snippet?
+			if(!empty($snippet)) {
+				$snippet = highlight_string('<?php' . "\n" . $snippet, true);
+				$snippet = str_replace('<br /><br />', '<br />', $snippet);
+				$snippet = str_replace('&lt;?php<br />', '', $snippet);
+				$snippet = str_replace('>' . $line . '&nbsp;', '><span style="color:red; font-weight:bold;">' . $line . '</span>&nbsp;', $snippet);
+			}
 			//add to trace
 			$trace[$k]['snippet'] = $snippet;
 		}
@@ -187,7 +201,7 @@ class ErrorHandler {
 		foreach($trace as $k => $v) {
 			$html .= '<div id="snippet-' . $k . '" class="snippet">' . "\n";
 			$html .= '<p style="background-color:#eee; padding:10px;">' . "\n";
-			$html .= $v['snippet'] . "\n";
+			$html .= ($v['snippet'] ?: 'No code snippet available. Eval?') . "\n";
 			$html .= '</p>' . "\n";
 			$html .= '</div>' . "\n";
 		}
@@ -214,6 +228,29 @@ class ErrorHandler {
 			//handle exception
 			$this->handleException($e);
 		}
+	}
+
+	public function debugBar(array $queries=[]) {
+		//debug vars
+		$time = number_format(microtime(true) - $this->startTime, 5);
+		$mem = number_format((memory_get_usage() - $this->startMem) / 1024, 0);
+		$peak = number_format(memory_get_peak_usage() / 1024, 0);
+		//debug data
+		$debug  = '<div id="debug" style="box-sizing:border-box; width:98%; font-size:12px; text-align:left; margin:10px auto; padding:10px; border:1px solid #ddd; border-radius:10px; background:#eee;">' . "\n";
+		$debug .= '<div style="margin-bottom:5px;"><b>Debug bar</b></div>' . "\n";
+		$debug .= '<div>Time: ' . $time . 's | Mem: ' . $mem . 'kb | Peak: ' . $peak . 'kb | Queries: ' . count($queries) . '</div>' . "\n";
+		//db queries?
+		if($queries) {
+			$debug .= '<div style="margin-top:10px;"><b>Database queries</b></div>' . "\n";
+			$debug .= '<ol style="margin:0; padding-left:15px;">' . "\n";
+			foreach($queries as $q) {
+				$debug .= '<li style="margin-top:5px;">' . $q . '</li>' . "\n";
+			}
+			$debug .= '</ol>' . "\n";
+		}
+		$debug .= '</div>' . "\n";
+		//return
+		return $debug;
 	}
 
 	protected function getExLevel($e) {

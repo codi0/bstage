@@ -4,14 +4,18 @@ namespace Bstage\Orm;
 
 class Mapper {
 
-	protected $state;
+	protected $name = '';
+	protected $data = [];
+	protected $with = [];
+	protected $relations = [];
+	protected $injectInto = [];
+
 	protected $model;
 	protected $modelClass;
 	protected $autoInsert = false;
 
 	protected $errors = [];
 	protected $fields = [];
-	protected $relations = [];
 
 	protected $app;
 	protected $orm;
@@ -33,7 +37,7 @@ class Mapper {
 			//merge field data
 			$this->fields = array_merge($props['fields'], $this->fields);
 			//set model class?
-			if(!$this->modelClass && $props['modelClass']) {
+			if(!$this->modelClass) {
 				$this->modelClass = $props['modelClass'];
 			}
 		}
@@ -41,12 +45,18 @@ class Mapper {
 		if(!$this->modelClass) {
 			throw new \Exception("No model class set");
 		}
+		//guess name?
+		if(!$this->name) {
+			$this->name = lcfirst(explode('\\Model\\', $this->modelClass)[1]);
+		}
+		//get short name
+		$shortName = $this->name(true);
 		//loop through fields
 		foreach($this->fields as $prop => $meta) {
 			//set default keys
 			$this->fields[$prop] = array_merge([
 				//core actions
-				'column' => '', //database column name (or foreign key column)
+				'column' => '', //database column name
 				'filter' => '', //input filtering rules (E.g. int)
 				'validate' => '', //input validation rules (E.g. optional|url)
 				'save' => false, //whether to save value as state, with optional format (E.g. json, concat)
@@ -54,28 +64,103 @@ class Mapper {
 				'onSave' => null, //filter value before saving into database
 				//relation actions
 				'relation' => '', //hasOne, hasMany, belongsTo, manyMany
+				'fk' => '', //foreign key database column name
+				'lk' => '', //local key database column name
 				'model' => $prop, //name of related model
+				'cascade' => [], //whether relation should be saved on insert, update and delete
+				'eager' => [], //whether to eager load relations with model
 				'lazy' => true, //whether relation should be lazy loaded
 			], $meta);
 			//is relationship?
 			if($rel = $this->fields[$prop]['relation']) {
-				//never save
+				//no column
+				$this->fields[$prop]['column'] = '';
 				$this->fields[$prop]['save'] = false;
-				//guess column name?
-				if(!$this->fields[$prop]['column']) {
+				//guess foreign key?
+				if(!$this->fields[$prop]['fk']) {
 					if($rel === 'belongsTo') {
-						$this->fields[$prop]['column'] = $this->underscore($prop) . '_id';
+						$this->fields[$prop]['fk'] = $this->underscore($prop) . '_id';
 					} else {
-						$this->fields[$prop]['column'] = 'id';
+						$this->fields[$prop]['fk'] = 'id';
+					}
+				}
+				//guess local key?
+				if(!$this->fields[$prop]['lk']) {
+					if($rel === 'belongsTo') {
+						$this->fields[$prop]['lk'] = 'id';
+					} else {
+						$this->fields[$prop]['lk'] = $shortName . '_id';
 					}
 				}
 			} else {
+				//no keys
+				$this->fields[$prop]['fk'] = '';
+				$this->fields[$prop]['lk'] = '';
 				//guess column name?
 				if(!$this->fields[$prop]['column']) {
-					$this->fields[$prop]['column'] = $this->camelcase($prop);
+					$this->fields[$prop]['column'] = $this->underscore($prop);
 				}
 			}
 		}
+	}
+
+	public function hash() {
+		return spl_object_hash($this->model());
+	}
+
+	public function name($short=false) {
+		//short name?
+		if($short) {
+			$name = preg_split('/(?=[A-Z])/',$this->name);
+			return strtolower($name[count($name)-1]);
+		}
+		//full name
+		return $this->name;
+	}
+
+	public function fields($field=null) {
+		//one field?
+		if($field) {
+			return isset($this->fields[$field]) ? $this->fields[$field] : null;
+		}
+		//all fields
+		return $this->fields;
+	}
+
+	public function props($field=null) {
+		//set vars
+		$data = [];
+		//loop through properties
+		foreach((array) $this->model() as $prop => $val) {
+			//format property name
+			$prop = trim(str_replace([ $this->modelClass, '*' ], '', $prop));
+			//return property?
+			if($field === $prop) {
+				return $val;
+			}
+			//add to array
+			$data[$prop] = $val;
+		}
+		//return
+		return $data;
+	}
+
+	public function data($field=null) {
+		//one field?
+		if($field) {
+			return isset($this->data[$field]) ? $this->data[$field] : null;
+		}
+		//all fields
+		return $this->data;
+	}
+
+	public function relations($field=null) {
+		//one field?
+		if($field) {
+			return isset($this->relations[$field]) ? $this->relations[$field] : null;
+		}
+		//all fields
+		return $this->relations;
 	}
 
 	public function errors($field=null) {
@@ -87,177 +172,106 @@ class Mapper {
 		return $this->errors;
 	}
 
-	public function fields($prop=null) {
-		//one field?
-		if($prop) {
-			return isset($this->fields[$prop]) ? $this->fields[$field] : null;
-		}
-		//all fields
-		return $this->fields;
-	}
-
-	public function state($key=null) {
-		//one field?
-		if($key) {
-			return isset($this->state[$key]) ? $this->state[$key] : null;
-		}
-		//all fields
-		return $this->state;
-	}
-
-	public function props($withRelations=true) {
-		//set vars
-		$data = [];
-		//loop through properties
-		foreach((array) $this->model() as $prop => $modelVal) {
-			//skip property?
-			if(!$withRelations && is_object($modelVal)) {
-				continue;
-			}
-			//format property name
-			$prop = trim(str_replace([ $this->modelClass, '*' ], '', $prop));
-			//add to array
-			$data[$prop] = $modelVal;
-		}
-		//return
-		return $data;
-	}
-
-	public function model(array $relations=[]) {
+	public function model() {
 		//model cached?
 		if($this->model) {
 			return $this->model;
 		}
-		//set vars
-		$data = $proxies = [];
-		$idVal = $pkCol = $state = null;
-		//has state?
-		if($this->state) {
-			$idVal = $this->state->pkVal();
-			$pkCol = $this->state->pkCol();
-			$state = $this->state->toArray();
-		}
-		//loop through fields
-		foreach($this->fields as $prop => $meta) {
-			//get DB column
-			$col = $meta['column'];
-			//get state value
-			$stateVal = isset($state[$col]) ? $state[$col] : null;
-			//convert format?
-			if(is_string($meta['save'])) {
-				$stateVal = $this->storeAs($meta['save'], $stateVal, true);
-			}
-			//is relation?
-			if($meta['relation']) {
-				//check for pre-configured relation
-				if(isset($this->relations[$prop]) && $this->relations[$prop]) {
-					$stateVal = $this->relations[$prop];
-				} else if(isset($relations[$prop]) && $relations[$prop]) {
-					$stateVal = $relations[$prop];
-				} else {
-					//set vars
-					$query = [];
-					//query by foreign key?
-					if($meta['relation'] === 'belongsTo') {
-						if($stateVal) {
-							$query[$pkCol] = $stateVal;
-						}
-					} else {
-						if($idVal) {
-							$query[$col] = $idVal;
-						}
-					}
-					//get relation
-					$stateVal = $this->orm->get($meta['model'], [
-						'query' => $query,
-						'collection' => (stripos($meta['relation'], 'many') !== false),
-						'lazy' => $meta['lazy'],
-					]);
-					//cache lazy relation?
-					if($stateVal instanceOf Proxy) {
-						$proxies[] = [
-							'object' => $stateVal,
-							'parentProp' => $prop,
-						];
-					}
-				}
-			}
-			//continue?
-			if($stateVal !== null) {
-				//call onHydrate?
-				if($meta['onHydrate']) {
-					$stateVal = $this->hook($meta['onHydrate'], $stateVal);
-				}
-				//add to array
-				$data[$prop] = $stateVal;
-			}
-		}
+		//format data
+		$data = $this->formatData($this->data, true);
 		//inject app kernel?
 		if($this->app && !isset($data['app'])) {
 			$data['app'] = $this->app;
 		}
 		//create model
 		$this->model = new $this->modelClass($data);
-		//set proxy references
-		foreach($proxies as $p) {
-			$p['object']->addReference($this->model, $p['parentProp']);
+		//add proxy reference
+		foreach($this->relations as $prop => $rel) {
+			if($rel instanceof Proxy) {
+				$rel->__reference($this->model, $prop);
+			}
 		}
-		//set Id now?
-		if($this->autoInsert && !$idVal) {
-			$this->save();
+		//inject into
+		foreach($this->injectInto as $key => $meta) {
+			//unset key
+			unset($this->injectInto[$key]);
+			//get relation
+			$rel = $this->relations[$meta['rel']];
+			//inject model?
+			if($mapper = $this->orm->mapper($rel)) {
+				//cache model
+				$res = $this->model;
+				//loop through keys
+				foreach($meta['keys'] as $k) {
+					$res = $res->$k;
+				}
+				//inject result
+				$mapper->inject([ $meta['prop'] => $res ]);
+			}
+		}
+		//save now?
+		if($this->autoInsert) {
+			//get ID?
+			if(is_object($this->data)) {
+				$pkVal = $this->data->pkVal();
+			} else {
+				$pkVal = isset($this->data['id']) ? $this->data['id'] : null;
+			}
+			//can save?
+			if(!$pkVal) {
+				$this->save();
+			}
 		}
 		//return
 		return $this->model;
 	}
 
-	public function inject($data, $skipEmpty=true) {
+	public function inject($data) {
 		//set vars
 		$model = $this->model();
+		$data = $this->formatData($data, false);
+		//model reflection
 		$ref = new \ReflectionObject($model);
 		//loop through data
-		foreach($data as $k => $v) {
-			//skip empty value?
-			if($skipEmpty && ($v === '' || $v === null)) {
-				continue;
-			}
-			//property name
-			$prop = $this->property($k);
-			//get meta
-			$meta = isset($this->fields[$prop]) ? $this->fields[$prop] : null;
-			//call onHydrate?
-			if($meta && $meta['onHydrate']) {
-				$v = $this->hook($meta['onHydrate'], $v);
-			}
+		foreach($data as $prop => $val) {
 			//inject property?
-			if($v !== null) {
+			if($ref->hasProperty($prop)) {
 				$r = $ref->getProperty($prop);
 				$r->setAccessible(true);
-				$r->setValue($model, $v);
+				$r->setValue($model, $val);
 			}
 		}
 		//chain it
 		return $this;
 	}
 
-	public function save() {
+	public function save(array $hashes=[]) {
+		//has fields?
+		if(!$this->fields) {
+			return true;
+		}
 		//set vars
-		$state = [];
 		$update = [];
+		$cascade = [];
 		$allowed = [];
 		$isNew = true;
 		$result = true;
-		//has fields?
-		if(!$this->fields) {
-			return $result;
+		$hash = $this->hash();
+		//already processed?
+		if(in_array($hash, $hashes)) {
+			return true;
 		}
+		//add hash
+		$hashes[] = $hash;
 		//reset validator?
 		if($this->validator) {
 			$this->validator->reset();
 		}
-		//has state?
-		if($this->state) {
-			$isNew = !$this->state->pkVal();
-			$state = $this->state->toArray();
+		//has ID?
+		if(is_object($this->data)) {
+			$isNew = !$this->data->pkVal();
+		} else {
+			$isNew = !(isset($this->data['id']) && $this->data['id']);
 		}
 		//loop through model properties
 		foreach($this->props() as $prop => $modelVal) {
@@ -266,19 +280,34 @@ class Mapper {
 			//skip field?
 			if(!$meta) continue;
 			//get DB column
-			$col = $meta['column'];
-			//cache column
-			$allowedCols[] = $col;
+			$col = $meta['fk'] ?: $meta['column'];
 			//get state value
-			$stateVal = isset($state[$col]) ? $state[$col] : null;
+			$stateVal = isset($this->data[$col]) ? $this->data[$col] : null;
+			//mark as allowed?
+			if(!in_array($col, $allowed)) {
+				$allowed[] = $col;
+			}
 			//is relation?
 			if($meta['relation']) {
+				//cascade save?
+				if($modelVal && $meta['cascade']) {
+					//on insert?
+					if($isNew && in_array('insert', $meta['cascade'])) {
+						$cascade[] = $modelVal;
+					}
+					//on update?
+					if(!$isNew && in_array('update', $meta['cascade'])) {
+						$cascade[] = $modelVal;
+					}
+				}	
 				//set foreign key?
-				if($meta['relation'] === 'belongsTo' && $modelVal) {
+				if($meta['relation'] === 'belongsTo' && is_object($modelVal)) {
 					//get related ID
 					$modelVal = $modelVal->id;
 					//save value
 					$meta['save'] = true;
+				} else {
+					continue;
 				}
 			}
 			//has state changed?
@@ -299,7 +328,7 @@ class Mapper {
 				}
 			}
 			//save data?
-			if($this->state && $result && $meta['save']) {
+			if($result && $meta['save']) {
 				$update[$col] = [
 					'value' => $modelVal,
 					'format' => $meta['save'],
@@ -312,7 +341,7 @@ class Mapper {
 			$this->errors = $this->validator->getErrors();
 		}
 		//can save?
-		if($result && $update) {
+		if($result && $update && is_object($this->data)) {
 			//loop through data
 			foreach($update as $k => $v) {
 				//call onSave?
@@ -323,25 +352,23 @@ class Mapper {
 				if(is_string($v['format'])) {
 					$v['value'] = $this->storeAs($v['format'], $v['value']);
 				}
-				//update state?
+				//update data?
 				if($v['value'] !== null) {
-					$this->state[$k] = $v['value'];
-				}
-			}
-			//build list of allowed columns
-			foreach($this->fields as $prop => $meta) {
-				if($meta['column']) {
-					$allowed[] = $meta['column'];
+					$this->data[$k] = $v['value'];
 				}
 			}
 			//save successful?
-			if($result = $this->state->save($allowed)) {
+			if($result = $this->data->save($allowed)) {
+				//insert ID?
 				if($isNew) {
-					//get model ID
-					$idVal = $this->state->pkVal();
-					$idProp = $this->property($this->state->pkCol());
+					//get ID property
+					$prop = $this->property($this->data->pkCol());
 					//inject ID
-					$this->inject([ $idProp => $idVal ]);
+					$this->inject([ $prop => $result ]);
+				}
+				//cascade save
+				foreach($cascade as $c) {
+					$this->orm->save($c, $hashes);
 				}
 			}
 		}
@@ -349,27 +376,174 @@ class Mapper {
 		return $result;
 	}
 
-	public function delete() {
-		return $this->state ? $this->state->delete() : true;
+	public function delete(array $hashes=[]) {
+		//has fields?
+		if(!$this->fields) {
+			return true;
+		}
+		//set vars
+		$hash = $this->hash();
+		//already processed?
+		if(in_array($hash, $hashes)) {
+			return true;
+		}
+		//add hash
+		$hashes[] = $hash;
+		//delete data
+		$res = $this->data->delete();
+		//loop through model properties
+		foreach($this->props() as $prop => $modelVal) {
+			//get field meta
+			$meta = isset($this->fields[$prop]) ? $this->fields[$prop] : [];
+			//is relation?
+			if($meta && $meta['relation']) {
+				//cascade save?
+				if($modelVal && $meta['cascade']) {
+					//on delete?
+					if(in_array('delete', $meta['cascade'])) {
+						$this->orm->delete($modelVal, $hashes);
+					}
+				}
+			}
+		}	
+		//return
+		return $res;
 	}
 
-	protected function hook($callback, $value) {
-		//parse callback?
-		if(is_string($callback) && strpos($callback, '.') !== false) {
+	protected function formatData($data, $createRel=true) {
+		//set vars
+		$res = [];
+		$relations = [];
+		//loop through data
+		foreach($data as $key => $val) {
+			//get property
+			$prop = $this->property($key);
+			//get meta data
+			$meta = $prop ? $this->fields[$prop] : [];
+			//is relation?
+			if($meta && $meta['relation']) {
+				//relation found?
+				if($rel = $this->formatRelation($prop, $val, false)) {
+					$res[$prop] = $this->relations[$prop] = $rel;
+				}
+				//next
+				continue;
+			}
+			//convert format?
+			if($meta && is_string($meta['save'])) {
+				$val = $this->storeAs($meta['save'], $val, true);
+			}			
+			//add to array?
+			if($val !== null) {
+				//call onHydrate?
+				if($meta && $meta['onHydrate']) {
+					$val = $this->hook($meta['onHydrate'], $val);
+				}
+				//guess property?
+				if(!$prop) {
+					$prop = $this->camelcase($key);
+				}
+				//store value
+				$res[$prop] = $val;
+			}
+		}
+		//create relations?
+		if($createRel) {
+			//create new relations
+			foreach($this->fields as $prop => $meta) {
+				//is relation?
+				if(!$meta['relation']) {
+					continue;
+				}
+				//relation exists?
+				if(isset($this->relations[$prop]) && $this->relations[$prop]) {
+					continue;
+				}
+				//get value
+				$val = isset($this->data[$meta['fk']]) ? $this->data[$meta['fk']] : null;
+				//create relation
+				$this->relations[$prop] = $this->formatRelation($prop, $val, true);
+			}
+			//merge relations
+			$res = array_merge($res, $this->relations);
+		}
+		//return
+		return $res;
+	}
+
+	protected function formatRelation($prop, $val, $create=false) {
+		//valid relation?
+		if(!isset($this->fields[$prop]) || !$this->fields[$prop]['relation']) {
+			return null;
+		}
+		//fetch relation?
+		if(($val || $create) && !is_object($val)) {
 			//set vars
-			$exp = explode('.', $callback, 2);
-			$name = $exp[0];
-			$method = isset($exp[1]) ? $exp[1] : '';
-			if($name === 'model') {
-				$callback = [ $this->model, $method ];
-			} elseif($name === 'mapper') {
-				$callback = [ $this, $method ];
-			} else {
-				$callback = [ $this->app->$name, $method ];
+			$relQuery = [];
+			$relData = [];
+			$meta = $this->fields[$prop];
+			$collection = (stripos($meta['relation'], 'many') !== false);
+			$with = isset($this->with[$prop]) ? $this->with[$prop] : [];
+			//run query?
+			if(is_scalar($val)) {
+				$relQuery = [
+					'where' => [
+						$meta['lk'] => $val,
+					],
+				];
+			} else if($val) {
+				$relData = $this->extractSelf($prop, $val);
+			}
+			//get relation
+			$val = $this->orm->get($meta['model'], $this->arrayMergeRecursive([
+				'query' => $relQuery,
+				'data' => $relData,
+				'collection' => $collection,
+				'eager' => $meta['eager'],
+				'lazy' => $meta['lazy'],
+			], $with));
+		}
+		//return
+		return $val;
+	}
+
+	protected function extractSelf($prop, array $data) {
+		//loop through data
+		foreach($data as $k => $v) {
+			//recursive?
+			if(is_array($v)) {
+				$data[$k] = $this->extractSelf($prop, $v);
+				continue;
+			}
+			//found self?
+			if(is_string($v) && strpos($v, '<SELF') === 0) {
+				//get keys
+				$keys = trim(str_replace([ '<SELF', '>' ], '', $v), '.');
+				$keys = $keys ? explode('.', $keys) : [];
+				//model exists?
+				if($this->model) {
+					//cache model
+					$res = $this->model;
+					//loop through keys
+					foreach($keys as $k) {
+						$res = $res->$k;
+					}
+					//update value
+					$data[$k] = $res;
+				} else {
+					//cache reference
+					$this->injectInto[] = [
+						'rel' => $prop,
+						'prop' => $k,
+						'keys' => $keys,
+					];
+					//remove key
+					unset($data[$k]);
+				}
 			}
 		}
 		//return
-		return call_user_func($callback, $value, $this);
+		return $data;
 	}
 
 	protected function storeAs($type, $value, $reverse=false) {
@@ -391,24 +565,34 @@ class Mapper {
 		return $value;
 	}
 
-	protected function column($property) {
-		//column defined?
-		if(isset($this->fields[$property]) && $this->fields[$property]['column']) {
-			return $this->fields[$property]['column'];
+	protected function column($input) {
+		//exact match?
+		if(isset($this->fields[$input])) {
+			return $this->fields[$input]['column'];
 		}
-		//best guess
-		return $this->underscore($property);
-	}
-
-	protected function property($column) {
-		//check fields
-		foreach($this->fields as $property => $meta) {
-			if($meta['column'] === $column) {
-				return $property;
+		//check secondary keys
+		foreach($this->fields as $prop => $meta) {
+			if($meta['column'] === $input) {
+				return $input;
 			}
 		}
-		//best guess
-		return $this->camelcase($column);
+		//not found
+		return null;
+	}
+
+	protected function property($input) {
+		//exact match?
+		if(isset($this->fields[$input])) {
+			return $input;
+		}
+		//check secondary keys
+		foreach($this->fields as $prop => $meta) {
+			if($meta['column'] === $input) {
+				return $prop;
+			}
+		}
+		//not found
+		return null;
 	}
 
 	protected function underscore($input) {
@@ -418,9 +602,54 @@ class Mapper {
 	}
 
 	protected function camelcase($input) {
-		return preg_replace_callback('/[A-Z]/', function($match) {
-			return '_' . strtolower($match[0]);
-		}, $input);	
+		return lcfirst(str_replace(' ', '', ucwords(str_replace('_', ' ', $input))));
+	}
+
+	protected function hook($callback, $value) {
+		//parse callback?
+		if(is_string($callback) && strpos($callback, '.') !== false) {
+			//set vars
+			$exp = explode('.', $callback, 2);
+			$name = $exp[0];
+			$method = isset($exp[1]) ? $exp[1] : '';
+			if($name === 'mapper') {
+				$callback = [ $this, $method ];
+			} else if(isset($this->app->$name)) {
+				$callback = [ $this->app->$name, $method ];
+			}
+		}
+		//return
+		return call_user_func($callback, $value, $this);
+	}
+
+	protected function arrayMergeRecursive(array $arr1, array $arr2) {
+		//source empty?
+		if(empty($arr1)) {
+			return $arr2;
+		}
+		//loop through 2nd array
+		foreach($arr2 as $k => $v) {
+			//next level?
+			if(is_array($v)) {
+				//does key exist?
+				if(isset($arr1[$k]) && is_array($arr1[$k])) {
+					//add value
+					$arr1[$k] = $this->arrayMergeRecursive($arr1[$k], $v);
+					//next
+					continue;
+				}
+			}
+			//change value?
+			if($v !== null) {
+				//set value
+				$arr1[$k] = $v;
+			} elseif(isset($arr1[$k])) {
+				//delete value
+				unset($arr1[$k]);
+			}
+		}
+		//return
+		return $arr1;
 	}
 
 }

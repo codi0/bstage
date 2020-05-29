@@ -36,8 +36,6 @@ function bstage($name=null, $callback=null) {
 	if(!isset($appCache[$name])) {
 		//set constants
 		if(!defined('BSTAGE_MIN_PHP')) define('BSTAGE_MIN_PHP', '5.6.0');
-		if(!defined('BSTAGE_START_TIME')) define('BSTAGE_START_TIME', microtime(true));
-		if(!defined('BSTAGE_START_MEM')) define('BSTAGE_START_MEM', memory_get_usage());
 		//min php version found?
 		if(version_compare(PHP_VERSION, BSTAGE_MIN_PHP, '<')) {
 			exit('To use the Bstage framework, please ask your web host to upgrade to at least php ' . BSTAGE_MIN_PHP);
@@ -87,7 +85,7 @@ function bstage($name=null, $callback=null) {
 			'config' => function(array $opts, $app) {
 				return new \Bstage\Container\Config(array_merge([
 					'dir' => $app->meta('base_dir') . '/config',
-					'fileNames' => [ 'core', 'orm', 'secrets' ],
+					'fileNames' => [ 'core', 'secrets' ],
 				], $opts));
 			},
 			'cookie' => function(array $opts, $app) {
@@ -108,7 +106,6 @@ function bstage($name=null, $callback=null) {
 			},
 			'db' => function(array $opts, $app) {
 				return \Bstage\Db\Pdo::create(array_merge([
-					'schemaFile' => $app->meta('base_dir') . '/config/db/schema.sql',
 					'logger' => $app->loggerFactory->create('sqlErrors'),
 					'debug' => $app->meta('debug'),
 				], $opts));
@@ -192,7 +189,6 @@ function bstage($name=null, $callback=null) {
 				return new \Bstage\Orm\Orm(array_merge([
 					'app' => $app,
 					'db' => $app->db,
-					'config' => $app->config,
 					'validator' => $app->validator,
 				], $opts));
 			},
@@ -214,37 +210,28 @@ function bstage($name=null, $callback=null) {
 				], $opts));
 			},
 			'templates' => function(array $opts, $app) {
-				return new \Bstage\View\Template(array_merge([
-					'paths' => (function() use($app) {
-						$paths = $app->meta('autoload_paths');
-						foreach($paths as $k => $v) {
-							$paths[$k] = dirname($v) . '/templates';
-							if(strpos($paths[$k], '/modules') !== false || !is_dir($paths[$k])) {
-								unset($paths[$k]);
-							}
-						}
-						return $paths;
-					})(),
+				return new \Bstage\View\Template\Engine(array_merge([
+					'data' => [
+						'auth' => $app->auth,
+						'meta' => [
+							'name' => $app->config('site.name'),
+							'email' => $app->config('site.email'),
+							'pathinfo' => trim($app->meta('path_info'), '/'),
+						],
+					],
 					'callbacks' => [
 						'url' => function($value=null, $query=null, $merge=false) use($app) {
 							return $app->url($value, $query, $merge);
 						},
-						'asset' => function($value) use($app) {
-							$theme = $app->config->get('site.theme');
-							$path = 'templates/' . ($theme ? $theme . '/' : '') . $value;
-							$time = @filemtime($app->meta('base_dir') . '/' . $path);
-							return $app->url($path) . ($time ? '?' . $time : '');
-						},
-						'html' => function($tag, $name, $value='', array $opts=[]) use($app) {
-							return $app->html->$tag($name, $value, $opts);
-						},
-						'pathInfo' => function() use($app) {
-							return trim($app->request->getUri()->getPathInfo(), '/');
-						},
-						'auth' => function() use($app) {
-							return isset($app->auth) ? $app->auth->id : null;
+						'html' => function($tag, $val) use($app) {
+							$args = func_get_args();
+							$tag = array_shift($args);
+							return $app->html->$tag(...$args);
 						},
 					],
+					'paths' => array_map(function($value) {
+						return $value . '/templates';
+					}, $app->meta('inc_paths')),
 					'theme' => $app->config->get('site.theme'),
 					'csrf' => $app->csrf,
 					'events' => $app->events,
@@ -262,10 +249,6 @@ function bstage($name=null, $callback=null) {
 		], isset($opts['services']) ? $opts['services'] : []);
 		//create app
 		$app = new \Bstage\App\Kernel($opts);
-		//Event: create database schema
-		$app->events->add('app.updating', function($event) use($app) {
-			$app->db->createSchema();
-		});
 		//Event: add debug bar
 		$app->events->add('app.response', function($event) use($app) {
 			//is html response?
@@ -276,28 +259,13 @@ function bstage($name=null, $callback=null) {
 			$output = $event->response->getContents();
 			//show debug vars?
 			if($app->meta('debug') && $event->request->getAttribute('primary')) {
-				//debug vars
-				$time = number_format(microtime(true) - BSTAGE_START_TIME, 5);
-				$mem = number_format((memory_get_usage() - BSTAGE_START_MEM) / 1024, 0);
-				$peak = number_format(memory_get_peak_usage() / 1024, 0);
+				//get queries
 				$queries = $app->db->getQueries();
-				//debug data
-				$debug  = '<div id="debug" style="width:100%; background:#f1f1f1; padding:10px; margin-top:30px; font-size:12px;">' . "\n";
-				$debug .= '<div style="margin-bottom:5px;"><b>Debug bar</b></div>' . "\n";
-				$debug .= '<div>Time: ' . $time . 's | Mem: ' . $mem . 'kb | Peak: ' . $peak . 'kb | Queries: ' . count($queries) . '</div>' . "\n";
-				//db queries?
-				if($queries) {
-					$debug .= '<div style="margin-top:10px;"><b>Database queries</b></div>' . "\n";
-					$debug .= '<ol style="margin:0; padding-left:15px;">' . "\n";
-					foreach($queries as $q) {
-						$debug .= '<li style="margin-top:5px;">' . $q . '</li>' . "\n";
-					}
-					$debug .= '</ol>' . "\n";
-				}
-				$debug .= '</div>' . "\n";
-				//add before </body>
-				if(stripos($output, '</body>') !== false) {
-					$output = preg_replace('/<\/body>/i', $debug. '</body>', $output);
+				//get debug bar
+				$debug = $app->errorHandler->debugBar($queries);
+				//add before </footer> or </body>
+				if(preg_match('/<\/(footer|body)>/i', $output)) {
+					$output = preg_replace('/<\/(footer|body)>/i', $debug. '</$1>', $output, 1);
 				} else {
 					$output .= "\n" . trim($debug);
 				}

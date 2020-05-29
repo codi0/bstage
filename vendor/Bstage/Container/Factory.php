@@ -31,13 +31,13 @@ class Factory {
 		if(!isset($this->cache[$name])) {
 			//set vars
 			$class = '';
-			$classCount = count($this->classFormats) - 1;
+			$count = count($this->classFormats) - 1;
 			//loop through classes
 			foreach($this->classFormats as $key => $val) {
 				//format class name
 				$class = str_replace('{name}', $name, $val);
 				//stop here?
-				if($key == $classCount || class_exists($class)) {
+				if($key == $count || class_exists($class)) {
 					break;
 				}
 			}

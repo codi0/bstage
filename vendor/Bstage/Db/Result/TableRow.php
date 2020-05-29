@@ -43,42 +43,40 @@ class TableRow extends \ArrayObject {
 	}
 
 	public function save(array $allowedCols=[]) {
-		//any changes?
-		if(!$this->_changes) {
-			return true;
-		}
 		//set vars
 		$data = [];
-		$result = true;
+		$id = $this->pkVal();
 		//sync source data?
-		if($this->_db) {
+		if($this->_db && $this->_changes) {
 			//already has ID?
-			if($id = $this->pkVal()) {
+			if(!empty($id)) {
 				//loop through changes
 				foreach($this->_changes as $col) {
 					$data[$col] = $this[$col];
 				}
-				//get data
-				$data = $this->formatData($data, $allowedCols);
-				//execute update query
-				$result = (bool) $this->_db->update($this->_table, $data, [ $this->_primaryKey => $id ]);
+				//valid data?
+				if($data = $this->formatData($data, $allowedCols)) {
+					//query succeeded?
+					if(!$this->_db->update($this->_table, $data, [ $this->_primaryKey => $id ])) {
+						return false;
+					}
+				}
 			} else {
-				//get data
-				$data = $this->formatData((array) $this, $allowedCols);
-				//execute insert query
-				$result = (bool) $this->_db->insert($this->_table, $data);
-				//set primary key?
-				if($result) {
-					$this[$this->_primaryKey] = $this->_db->insertId();
+				//valid data?
+				if($data = $this->formatData((array) $this, $allowedCols)) {
+					//query succeeded?
+					if(!$this->_db->insert($this->_table, $data)) {
+						return false;
+					}
+					//set primary key
+					$id = $this[$this->_primaryKey] = $this->_db->insertId();
 				}
 			}
 		}
-		//clear changes?
-		if($result) {
-			$this->_changes = [];
-		}
+		//clear changes
+		$this->_changes = [];
 		//return
-		return $result;
+		return $id;
 	}
 
 	public function delete() {
@@ -111,7 +109,9 @@ class TableRow extends \ArrayObject {
 	public function offsetSet($key, $val) {
 		//mark as changed?
 		if(!array_key_exists($key, $this) || $this[$key] != $val) {
-			$this->_changes[] = $key;
+			if(!is_object($val)) {
+				$this->_changes[] = $key;
+			}
 		}
 		//call parent
 		return parent::offsetSet($key, $val);
@@ -120,7 +120,9 @@ class TableRow extends \ArrayObject {
 	public function offsetUnset($key) {
 		//key exists?
 		if(array_key_exists($key, $this)) {
-			$this->_changes[] = $key;
+			if($this[$key] !== null && !is_object($this[$key])) {
+				$this->_changes[] = $key;
+			}
 		}
 		//call parent
 		return parent::offsetUnset($key);
@@ -129,12 +131,17 @@ class TableRow extends \ArrayObject {
 	protected function formatData(array $data, array $allowedCols) {
 		//loop through data
 		foreach($data as $col => $val) {
-			//remove column?
+			//column allowed?
 			if($allowedCols && !in_array($col, $allowedCols)) {
 				unset($data[$col]);
 				continue;
 			}
-			//requires format?
+			//remove object?
+			if(is_object($val)) {
+				unset($data[$col]);
+				continue;
+			}
+			//format value?
 			if(is_bool($val)) {
 				$data[$col] = $val ? 1 : 0;
 			} else if(is_null($val)) {

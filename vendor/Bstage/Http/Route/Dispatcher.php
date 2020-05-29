@@ -5,6 +5,7 @@ namespace Bstage\Http\Route;
 class Dispatcher {
 
 	protected $routes = [];
+	protected $filters = [];
 
 	protected $context;
 	protected $httpFactory;
@@ -18,6 +19,8 @@ class Dispatcher {
 		}
 		//check routes
 		foreach($this->routes as $route => $meta) {
+			//unset route
+			unset($this->routes[$route]);
 			//format input
 			$method = isset($meta['method']) ? $meta['method'] : null;
 			$methods = isset($meta['methods']) ? $meta['methods'] : $method;
@@ -28,7 +31,10 @@ class Dispatcher {
 	}
 
 	public function has($route) {
-		return isset($this->routes[trim($route, '/')]);
+		//run filters
+		$route = $this->runFilters($route);
+		//check if route exists
+		return isset($this->routes[$route]);
 	}
 
 	public function add($route, $method, $callback=null) {
@@ -50,8 +56,10 @@ class Dispatcher {
 		if(strpos($route, '!') !== false) {
 			list($prefix, $route) = explode('!', $route, 2);
 		}
+		//run filters
+		$route = $this->runFilters($route);
 		//save route
-		$this->routes[trim($route, '/')] = [
+		$this->routes[$route] = [
 			'methods' => $methods,
 			'callback' => $callback,
 			'prefix' => $prefix,
@@ -61,8 +69,8 @@ class Dispatcher {
 	}
 
 	public function remove($route) {
-		//set vars
-		$route = trim($route, '/');
+		//run filters
+		$route = $this->runFilters($route);
 		//route exists?
 		if(isset($this->routes[$route])) {
 			unset($this->routes[$route]);
@@ -95,6 +103,8 @@ class Dispatcher {
 				$default = $key;
 				continue;
 			}
+			//run filters
+			$key = $this->runFilters($key);
 			//exact match?
 			if($key === $uri) {
 				$route = $key;
@@ -157,7 +167,7 @@ class Dispatcher {
 
 	public function call($route, $request=null, $response=null) {
 		//set vars
-		$route = trim($route, '/');
+		$route = $this->runFilters($route);
 		//route matched?
 		if(!isset($this->routes[$route])) {
 			return false;
@@ -203,6 +213,25 @@ class Dispatcher {
 		}
 		//call route
 		return $this->call($request->getAttribute('route')->getName(), $request, $response);
+	}
+
+	public function addFilter($from, $to) {
+		//add filter
+		$this->filters[] = [
+			'from' => $from,
+			'to' => $to,
+		];
+		//chain it
+		return $this;
+	}
+
+	public function runFilters($route) {
+		//loop through filters
+		foreach($this->filters as $filter) {
+			$route = str_replace($filter['from'], $filter['to'], $route);
+		}
+		//return
+		return trim($route, '/');
 	}
 
 }

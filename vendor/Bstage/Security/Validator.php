@@ -6,6 +6,7 @@ class Validator {
 
 	protected $rules = [];
 	protected $errors = [];
+	protected $lastErrorField = '';
 
 	protected $field = '';
 	protected $label = '';
@@ -53,7 +54,7 @@ class Validator {
 	public function addError($message, $field=null) {
 		//set vars
 		$field = $field ?: $this->field;
-		$label = $field ?: $this->label;
+		$label = $this->label ?: $field;
 		//create array?
 		if(!isset($this->errors[$field])) {
 			$this->errors[$field] = [];
@@ -65,6 +66,8 @@ class Validator {
 		if(!in_array($message, $this->errors[$field])) {
 			$this->errors[$field][] = $message;
 		}
+		//cache last error field
+		$this->lastErrorField = $field;
 		//return
 		return $this->errors;
 	}
@@ -99,7 +102,7 @@ class Validator {
 		}
 		//cache field
 		$this->field = $opts['field'];
-		$this->label = $opts['label'] ?: $opts['field'];
+		$this->label = $opts['label'];
 		//is optional?
 		if(in_array('optional', $rules)) {
 			if($value) {
@@ -139,7 +142,7 @@ class Validator {
 				$value = $res;
 			}
 			//stop here?
-			if($opts['stop'] && !$opts['filter'] && $this->errors) {
+			if($opts['stop'] && !$opts['filter'] && $this->lastErrorField === $opts['field']) {
 				break;
 			}
 		}

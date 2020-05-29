@@ -30,30 +30,23 @@ class Response extends AbstractMessage {
 	}
 
 	public function getMediaType() {
-		//is cached?
-		if(!$this->type) {
-			//parse header?
-			if(!$contentType = $this->getHeaderLine('Content-Type')) {
-				//check raw headers
-				foreach(headers_list() as $header) {
-					if(stripos($header, 'content-type') === 0) {
-						$contentType = $header;
-						break;
-					}
+		if($this->type) {
+			return $this->type;	
+		}
+		if(!$contentType = $this->getHeaderLine('Content-Type')) {
+			foreach(headers_list() as $header) {
+				if(stripos($header, 'content-type') === 0) {
+					$contentType = $header;
+					break;
 				}
 			}
-			//value found?
-			if($contentType) {
-				//format value
-				$type = str_replace('Content-Type:', '', $contentType);
-				$type = explode(';', $type);
-				$type = explode('/', $type[0]);
-				$type = strtolower(trim($type[1]));
-				//cache value
-				$this->type = $type;
-			}
 		}
-		//return
+		if($contentType) {
+			$type = str_replace('Content-Type:', '', $contentType);
+			$type = explode(';', $type);
+			$type = explode('/', $type[0]);
+			$this->type = strtolower(trim($type[1]));
+		}
 		return $this->type ?: 'html';
 	}
 
@@ -91,7 +84,7 @@ class Response extends AbstractMessage {
 		if(!headers_sent()) {
 			header("HTTP/" . $this->protocol . " " . $this->statusCode . " " . $this->reasonPhrase);
 			foreach($this->headers as $name => $values) {
-				header($name . ': ', implode(', ', $values));
+				header($name . ': ' . implode(', ', $values));
 			}
 		}
 		if($ret) {

@@ -4,13 +4,12 @@ namespace Bstage\Orm;
 
 class Proxy {
 
-	protected $name;
-	protected $query = [];
+	protected $name = '';
+	protected $model = null;
 	protected $references = [];
-	protected $autoInsert = false;
 
-	protected $orm;
-	protected $model;
+	protected $orm = null;
+	protected $ormOpts = [];
 
 	public function __construct(array $opts=array()) {
 		//set properties
@@ -19,57 +18,71 @@ class Proxy {
 				$this->$k = $v;
 			}
 		}
-		//valid proxy?
-		if(!$this->name || !$this->query) {
-			throw new \Exception("Proxy requires a model name and query parameter");
+		//name set?
+		if(!$this->name) {
+			throw new \Exception("Proxy name required");
 		}
-		//orm passed?
+		//orm set?
 		if(!$this->orm) {
 			throw new \Exception("ORM object not set");
+		}
+		//add reference?
+		if(isset($this->ormOpts['parent']) && isset($this->ormOpts['parentProp'])) {
+			$this->__reference($this->ormOpts['parent'], $this->ormOpts['parentProp']);
 		}
 	}
 
 	public function __isset($key) {
-		return isset($this->createModel()->$key);
+		return isset($this->__create()->$key);
 	}
 
 	public function __get($key) {
-		return $this->createModel()->$key;
+		return $this->__create()->$key;
 	}
 
 	public function __set($key, $val) {
-		$this->createModel()->$key = $val;
+		$this->__create()->$key = $val;
 	}
 
 	public function __unset($key) {
-		unset($this->createModel()->$key);
+		unset($this->__create()->$key);
 	}
 
 	public function __call($method, array $args) {
-		return $this->createModel()->$method(...$args);
+		return $this->__create()->$method(...$args);
 	}
 
-	public function addReference($model, $property) {
-		//add to array
-		$this->references[] = [
-			'model' => $model,
-			'property' => $property,
-		];
+	public function __object() {
+		return $this->model;
+	}
+
+	public function __reference($model, $property) {
+		//can set?
+		if($model && $property) {
+			//create hash
+			$hash = spl_object_hash($model) . $property;
+			//reference exists?
+			if(!isset($this->references[$hash])) {
+				//add reference
+				$this->references[$hash] = [
+					'model' => $model,
+					'property' => $property,
+				];
+			}
+		}
 		//chain it
 		return $this;
 	}
 
-	protected function createModel() {
-		echo 'test';
+	protected function __create() {
 		//use cache?
 		if($this->model) {
 			return $this->model;
 		}
 		//create model?
-		$this->model = $this->orm->get($this->name, [
-			'query' => $this->query,
-			'autoInsert' => $this->autoInsert,
-		]);
+		$this->model = $this->orm->get($this->name, array_merge($this->ormOpts, [
+			'lazy' => false,
+		]));
 		//success?
 		if(!$this->model) {
 			throw new \Exception("Failed to create object: $this->name");
@@ -80,7 +93,7 @@ class Proxy {
 			$r = new \ReflectionObject($ref['model']);
 			//property exists?
 			if(!$r->hasProperty($ref['property'])) {
-				throw new \Exception("Property on parent object not found: " . $ref['property']);
+				throw new \Exception("Property does not exist on parent reference: " . $ref['property']);
 			}
 			//update parent property
 			$p = $r->getProperty($ref['property']);

@@ -17,10 +17,6 @@ class Config {
 	protected $readonly = false;
 
 	public function __construct(array $opts=[]) {
-		//format opts?
-		if(!isset($opts['data']) && !isset($opts['dir'])) {
-			$opts = [ 'data' => $opts ];
-		}
 		//set properties
 		foreach($opts as $k => $v) {
 			if($k === 'data') {
@@ -42,37 +38,49 @@ class Config {
 	public function get($id, $default=null) {
 		//set vars
 		$idArr = $id ? explode($this->token, $id) : [];
-		$data = $this->deepMerge($this->data, $this->dataLocal);
-		//loop through segments
-		foreach($idArr as $index => $seg) {
-			//is array like?
-			if(is_array($data) || $data instanceof \ArrayAccess) {
-				if(array_key_exists($seg, $data)) {
-					$data = $data[$seg];
-					continue;
-				}
-			}
-			//is object?
-			if(is_object($data)) {
-				//call method?
-				if(substr($seg, -2) === '()') {
-					$seg = substr($seg, 0, -2);
-					if(is_callable([ $data, $seg ])) {
-						$data = $data->$seg();
-						continue;
+		$idCount = count($idArr) - 1;
+		//check local and saved data
+		foreach([ $this->dataLocal, $this->data ] as $i1 => $data) {
+			//loop through segments
+			foreach($idArr as $i2 => $segment) {
+				//set vars
+				$res = '%%null%%';
+				//is array like?
+				if(is_array($data) || $data instanceof \ArrayAccess) {
+					if(array_key_exists($segment, $data)) {
+						$res = $data[$segment];
 					}
+				} else if(is_object($data)) {
+					//call method?
+					if(substr($segment, -2) === '()') {
+						$segment = substr($segment, 0, -2);
+						if(is_callable([ $data, $segment ])) {
+							$res = $data->$segment();
+						}
+					} else {
+						if(isset($data->$segment)) {
+							$res = $data->$segment;
+						}
+					}
+				}
+				//not found?
+				if($res === '%%null%%') {
+					if($i1 == 1) {
+						return $default;
+					} else {
+						break;
+					}
+				}
+				//complete?
+				if($idCount == $i2) {
+					return $res;
 				} else {
-					if(isset($data->$seg)) {
-						$data = $data->$seg;
-						continue;
-					}
+					$data = $res;
 				}
-			}
-			//not found
-			return $default;
+			}	
 		}
-		//return
-		return $data;
+		//not found
+		return $default;
 	}
 
 	public function set($id, $value, $save=true) {
@@ -100,7 +108,7 @@ class Config {
 		}
 		//merge data?
 		if(!empty($arr)) {
-			$data = $this->deepMerge($source, $arr, true);
+			$data = $this->arrayMergeRecursive($source, $arr);
 		} else {
 			$data = $source;
 		}
@@ -131,7 +139,11 @@ class Config {
 	}
 
 	public function toArray() {
-		return $this->deepMerge($this->data, $this->dataLocal);
+		if($this->data && $this->dataLocal) {
+			return $this->arrayMergeRecursive($this->data, $this->dataLocal);
+		} else {
+			return (array) ($this->data || $this->dataLocal);
+		}
 	}
 
 	public function save() {
@@ -187,7 +199,7 @@ class Config {
 		}
 	}
 
-	protected function deepMerge(array $arr1, array $arr2) {
+	protected function arrayMergeRecursive(array $arr1, array $arr2) {
 		//source empty?
 		if(empty($arr1)) {
 			return $arr2;
@@ -199,7 +211,7 @@ class Config {
 				//does key exist?
 				if(isset($arr1[$k]) && is_array($arr1[$k])) {
 					//add value
-					$arr1[$k] = $this->deepMerge($arr1[$k], $v);
+					$arr1[$k] = $this->arrayMergeRecursive($arr1[$k], $v);
 					//next
 					continue;
 				}

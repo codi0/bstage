@@ -21,6 +21,10 @@ class Pdo extends AbstractDb {
 				$this->addError($e->getMessage(), 'connect');
 				$this->dbh = null;
 			}
+			//set timezone?
+			if($this->dbh) {
+				$this->dbh->exec("SET time_zone = '" . $this->getTimeOffset() . "'");
+			}
 		}
 		//return
 		return $this->dbh;

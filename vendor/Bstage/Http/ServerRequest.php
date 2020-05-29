@@ -45,8 +45,9 @@ class ServerRequest extends Request {
 	}
 
 	public function withUploadedFiles(array $uploadedFiles) {
-		if(method_exists('UploadedFile', 'formatFiles')) {
-			$uploadedFiles = UploadedFile::formatFiles($uploadedFiles);
+		$class = __NAMESPACE__ . '\UploadedFile';
+		if($uploadedFiles && method_exists($class, 'formatFiles')) {
+			$uploadedFiles = $class::formatFiles($uploadedFiles);
 		}
 		$this->uploadedFiles = $uploadedFiles;
 		return $this;

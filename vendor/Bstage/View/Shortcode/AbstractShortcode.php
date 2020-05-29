@@ -2,7 +2,7 @@
 
 namespace Bstage\View\Shortcode;
 
-abstract AbstractShortcode {
+abstract class AbstractShortcode {
 
 	protected $app;
 

@@ -50,25 +50,36 @@ class ShortcodeManager {
 		//set vars
 		$sm = $this;
 		//parse all shortcodes
-		return preg_replace_callback('/\[([^\]]+)\]/', function($matches) use($sm) {
-			//get shortcode parts
-			$parts = array_map('trim', explode(' ', $matches[1], 2));
-			$name = $parts[0];
-			$attrs = isset($parts[1]) ? array_map('trim', explode(' ', $parts[1])) : [];
-			//loop through attributes
-			foreach($attrs as $key => $val) {
-				//delete key
-				unset($attrs[$key]);
-				//set attribute?
-				if(strpos($val, '=') !== false) {
-					//get attr key and value
-					list($k, $v) = array_map('trim', explode('=', $val, 2));
-					//remove quotes
-					$attrs[$k] = trim($v, '"');
+		return preg_replace_callback('/\[([a-z0-9\-\_]+)(\s[^\]]+)?\]/i', function($parts) use($sm) {
+			//set vars
+			$attr = [];
+			$key = null;
+			$name = $parts[1];
+			//skip css attr?
+			if(in_array($name, [ 'readonly', 'disabled', 'hidden' ])) {
+				return $parts[0];
+			}
+			//has attributes?
+			if(isset($parts[2]) && $parts[2]) {
+				//split string
+				if(preg_match_all('/("[^"]*")|[^"]*/', $parts[2], $matches)) {
+					//loop through matches
+					foreach($matches[0] as $m) {
+						//key?
+						if(strpos($m, '=') !== false) {
+							$key = trim($m, '= ');
+							continue;
+						}
+						//value?
+						if($key && $m) {
+							$attr[$key] = trim($m, '" ');
+							$key = null;
+						}
+					}
 				}
 			}
 			//get output
-			return $sm->get($name, $attrs, false);
+			return $sm->get($name, $attr, false);
 		}, $output);
 	}
 

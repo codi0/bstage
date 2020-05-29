@@ -6,7 +6,7 @@ class Input {
 
 	protected $validator = null;
 
-	public function __construct(array $opts=array()) {
+	public function __construct(array $opts=[]) {
 		//set properties
 		foreach($opts as $k => $v) {
 			if(property_exists($this, $k)) {
@@ -19,7 +19,7 @@ class Input {
 
 	public function __call($name, array $args) {
 		//set vars
-		$opts = array();
+		$opts = [];
 		$param = isset($args[0]) ? $args[0] : null;
 		//format opts?
 		if(count($args) > 1) {
@@ -48,50 +48,54 @@ class Input {
 		return isset($GLOBALS[$global]) && isset($GLOBALS[$global][$param]);
 	}
 
-	public function find($global, $param=null, array $opts=array()) {
-		//set opts
-		$opts = array_merge(array(
+	public function find($global, $param=null, array $opts=[]) {
+		//set defaults
+		$opts = array_merge([
 			'field' => null,
 			'label' => null,
 			'default' => null,
 			'validate' => null,
-			'filter' => 'xss',
-		), $opts);
-		//current global?
-		if(empty($global)) {
-			$global = $_SERVER['REQUEST_METHOD'];
-		}
+			'filter' => null,
+		], $opts);
 		//set vars
-		$res = array();
 		$global = '_' . trim(strtoupper($global), '_');
-		$param = str_replace(array( '*', '..*' ), '.*', $param);
-		$default = ($opts['default'] === null) ? ($param ? '' : array()) : $opts['default'];
-		$validOpts = array( 'field' => $opts['field'] ?: $param, 'label' => $opts['label'] );
-		//run checks
-		if(!isset($GLOBALS[$global]) || !is_array($GLOBALS[$global]) || !$param) {
-			//all params
-			$res = isset($GLOBALS[$global]) ? $GLOBALS[$global] : $default;
-		} elseif(strpos($param, '.*') === false) {
-			//single param
-			$res = isset($GLOBALS[$global][$param]) ? $GLOBALS[$global][$param] : $default;
+		$param = str_replace([ '*', '..*' ], '.*', $param);
+		$default = ($opts['default'] === null) ? ($param ? '' : []) : $opts['default'];
+		$validOpts = [ 'field' => $opts['field'] ?: $param, 'label' => $opts['label'] ];
+		//find global
+		if($global === '_' || $global === '_REQUEST') {
+			//$_POST takes priority
+			$data = array_merge($_GET, $_POST);
 		} else {
+			//global exists?
+			if(isset($GLOBALS[$global]) && is_array($GLOBALS[$global])) {
+				$data = $GLOBALS[$global];
+			} else {
+				return $default;
+			}
+		}
+		//filter data
+		if($param && strpos($param, '.*') === false) {
+			//single param
+			$data = isset($data[$param]) ? $data[$param] : $default;
+		} else if($param) {
 			//wildcard param
-			foreach($GLOBALS[$global] as $k => $v) {
-				if(preg_match('/' . $param . '/', $k)) {
-					$res[$k] = $v;
+			foreach($data as $k => $v) {
+				if(!preg_match('/' . $param . '/', $k)) {
+					unset($data[$k]);
 				}
 			}
 		}
 		//filter?
 		if($opts['filter']) {
-			$res = $this->validator->filter($res, $opts['filter'], $validOpts);
+			$data = $this->validator->filter($data, $opts['filter'], $validOpts);
 		}
 		//validate?
 		if($opts['validate']) {
-			$this->validator->validate($res, $opts['validate'], $validOpts);
+			$this->validator->validate($data, $opts['validate'], $validOpts);
 		}
 		//return
-		return $res;
+		return $data;
 	}
 
 }
