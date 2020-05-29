@@ -28,18 +28,3 @@
 	</script>
 </body>
 </html>
-<body>
-	<header>
-		<?= $tpl->block('header') ?>
-	</header>
-	<main>
-		<?= $tpl->block('main') ?>
-	</main>
-	<footer>
-		<?= $tpl->block('footer') ?>
-	</footer>
-	<script>
-		document.querySelector('main').style.paddingBottom = (document.querySelector('footer').offsetHeight + 40) + 'px';
-	</script>
-</body>
-</html>
