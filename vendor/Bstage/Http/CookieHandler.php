@@ -2,7 +2,7 @@
 
 namespace Bstage\Http;
 
-class Cookie {
+class CookieHandler {
 
 	protected $signKey = '';
 	protected $signToken = '.';

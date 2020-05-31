@@ -48,6 +48,7 @@
 
 	.forum .topic .replies {
 		display: inline;
+		color: var(--link-alt-color);
 	}
 
 }

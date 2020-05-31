@@ -17,24 +17,6 @@ class Dispatcher {
 				$this->$k = $v;
 			}
 		}
-		//check routes
-		foreach($this->routes as $route => $meta) {
-			//unset route
-			unset($this->routes[$route]);
-			//format input
-			$method = isset($meta['method']) ? $meta['method'] : null;
-			$methods = isset($meta['methods']) ? $meta['methods'] : $method;
-			$callback = isset($meta['callback']) ? $meta['callback'] : null;
-			//add route
-			$this->add($route, $methods, $callback);
-		}
-	}
-
-	public function has($route) {
-		//run filters
-		$route = $this->runFilters($route);
-		//check if route exists
-		return isset($this->routes[$route]);
 	}
 
 	public function add($route, $method, $callback=null) {
@@ -58,8 +40,13 @@ class Dispatcher {
 		}
 		//run filters
 		$route = $this->runFilters($route);
+		//create array?
+		if(!isset($this->routes[$route])) {
+			$this->routes[$route] = [];
+		}
 		//save route
-		$this->routes[$route] = [
+		$this->routes[$route][] = [
+			'name' => $route,
 			'methods' => $methods,
 			'callback' => $callback,
 			'prefix' => $prefix,
@@ -68,22 +55,11 @@ class Dispatcher {
 		return $this;
 	}
 
-	public function remove($route) {
-		//run filters
-		$route = $this->runFilters($route);
-		//route exists?
-		if(isset($this->routes[$route])) {
-			unset($this->routes[$route]);
-		}
-		//chain it
-		return $this;
-	}
-
 	public function match($request) {
 		//set vars
+		$params = [];
 		$route = null;
 		$default = null;
-		$params = [];
 		$method = $request->getMethod();
 		$uri = trim($request->getUri()->getPathInfo(), '/');
 		//put exact match first?
@@ -91,64 +67,67 @@ class Dispatcher {
 			$this->routes = [ $uri => $this->routes[$uri] ] + $this->routes;
 		}
 		//loop through routes
-		foreach($this->routes as $key => $val) {
-			//reset params
-			$params = [];
-			//method matched?
-			if($val['methods'] && !in_array($method, $val['methods'])) {
-				continue;
-			}
-			//default match?
-			if($key == '404' || $key == '*') {
-				$default = $key;
-				continue;
-			}
-			//run filters
-			$key = $this->runFilters($key);
-			//exact match?
-			if($key === $uri) {
-				$route = $key;
-				break;
-			}
-			//set vars
-			$count = 0;
-			$total = count(explode('<:', $key)) - 1;
-			$regex = str_replace([ '/<', '>/', '/' ], [ '<', '>', '\/' ], $key);
-			//has params?
-			if($total > 0) {
-				//replace params
-				$regex = preg_replace_callback('/<:([a-z0-9]+)(\?)?>/i', function($matches) use(&$params, &$count, $total) {
-					//counter
-					$count++;
-					//set vars
-					$before = ($count == 1) ? '?' : '';
-					$after = ($count == $total) ? '\/?' : '';
-					$isId = strtolower(substr($matches[1], -2)) === 'id';
-					$pattern = $isId ? '[0-9]+' : '[^\/]+';
-					//add key
-					$params[$matches[1]] = $isId ? 0 : '';
-					//replace with regex
-					return '(\/' . $before . $pattern . $after . ')' . (isset($matches[2]) ? '?' : '');
-				}, $regex);
-			}
-			//pattern match?
-			if(!preg_match_all('/^' . $regex . '$/', $uri, $matches)) {
-				continue;
-			}
-			//remove overall match
-			array_shift($matches);
-			//loop through params
-			foreach($params as $k => $v) {
-				//get value
-				$tmp = trim(array_shift($matches)[0], '/');
-				//add param
-				$params[$k] = ($v === 0) ? (int) $tmp : $tmp;
-				//remove next
+		foreach($this->routes as $name => $items) {
+			//loop through items
+			foreach($items as $item) {
+				//reset params
+				$params = [];
+				//method match?
+				if($item['methods'] && !in_array($method, $item['methods'])) {
+					continue;
+				}
+				//default match?
+				if($name == '404' || $name == '*') {
+					$default = $item;
+					continue;
+				}
+				//run filters
+				$name = $this->runFilters($name);
+				//exact match?
+				if($name == $uri) {
+					$route = $item;
+					break 2;
+				}
+				//set vars
+				$count = 0;
+				$total = count(explode('<:', $name)) - 1;
+				$regex = str_replace([ '/<', '>/', '/' ], [ '<', '>', '\/' ], $name);
+				//has params?
+				if($total > 0) {
+					//replace params
+					$regex = preg_replace_callback('/<:([a-z0-9]+)(\?)?>/i', function($matches) use(&$params, &$count, $total) {
+						//counter
+						$count++;
+						//set vars
+						$before = ($count == 1) ? '?' : '';
+						$after = ($count == $total) ? '\/?' : '';
+						$isId = strtolower(substr($matches[1], -2)) === 'id';
+						$pattern = $isId ? '[0-9]+' : '[^\/]+';
+						//add key
+						$params[$matches[1]] = $isId ? 0 : '';
+						//replace with regex
+						return '(\/' . $before . $pattern . $after . ')' . (isset($matches[2]) ? '?' : '');
+					}, $regex);
+				}
+				//pattern match?
+				if(!preg_match_all('/^' . $regex . '$/', $uri, $matches)) {
+					continue;
+				}
+				//remove overall match
 				array_shift($matches);
+				//loop through params
+				foreach($params as $k => $v) {
+					//get value
+					$tmp = trim(array_shift($matches)[0], '/');
+					//add param
+					$params[$k] = ($v === 0) ? (int) $tmp : $tmp;
+					//remove next
+					array_shift($matches);
+				}
+				//set route
+				$route = $item;
+				break 2;
 			}
-			//set route
-			$route = $key;
-			break;
 		}
 		//use default?
 		if($route === null) {
@@ -159,37 +138,45 @@ class Dispatcher {
 				throw new \Exception("No 404 route found");
 			}
 		}
-		//get prefix
-		$prefix = isset($this->routes[$route]) ? $this->routes[$route]['prefix'] : '';
+		//set params
+		$route['params'] = $params;
 		//return route
-		return new Route($route, $params, $prefix);
+		return new Route($route);
 	}
 
-	public function call($route, $request=null, $response=null) {
-		//set vars
-		$route = $this->runFilters($route);
-		//route matched?
-		if(!isset($this->routes[$route])) {
+	public function call($route, $request=null) {
+		//find route?
+		if(is_string($route)) {
+			//create request?
+			if(!$request) {
+				$uri = '/' . trim($route, '/');
+				$request = $this->httpFactory->createServerRequest($_SERVER['REQUEST_METHOD'], $uri);
+			}
+			//match request
+			$route = $this->match($request);
+		} else {
+			//create request?
+			if(!$request) {
+				$request = $this->httpFactory->createFromGlobals('ServerRequest');
+			}
+		}
+		//valid route?
+		if(!($route instanceof Route)) {
 			return false;
 		}
-		//create request?
-		if(!$request) {
-			$request = $this->httpFactory->createFromGlobals('ServerRequest');
-		}
-		//link route?
-		if(!$request->getAttribute('route')) {
-			$request = $request->withAttribute('route', new Route($route));
-		}
-		//create response?
-		if(!$response) {
+		//has response?
+		if(!$response = $request->getAttribute('response')) {
+			//create response
 			$response = $this->httpFactory->createResponse();
+			//link response to request
+			$request = $request->withAttribute('response', $response);
 		}
-		//link response
-		$request = $request->withAttribute('response', $response);
+		//link route to request
+		$request = $request->withAttribute('route', $route);
 		//start buffer
 		ob_start();
 		//invoke callback
-		$res = call_user_func($this->routes[$route]['callback'], $request, $response, $this->context);
+		$res = call_user_func($route->getCallback(), $request, $response, $this->context);
 		//end buffer
 		$buffer = ob_get_clean();
 		//is response object?
@@ -206,13 +193,11 @@ class Dispatcher {
 		return $response;
 	}
 
-	public function dispatch($request, $response=null) {
-		//match route?
-		if(!$request->getAttribute('route')) {
-			$request = $request->withAttribute('route', $this->match($request));
-		}
+	public function dispatch($request) {
+		//match route
+		$route = $this->match($request);
 		//call route
-		return $this->call($request->getAttribute('route')->getName(), $request, $response);
+		return $this->call($route, $request);
 	}
 
 	public function addFilter($from, $to) {

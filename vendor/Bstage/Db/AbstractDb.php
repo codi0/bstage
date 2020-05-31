@@ -133,7 +133,11 @@ abstract class AbstractDb {
 		return (int) $this->rowsAffected;
 	}
 
-	public function select($table, array $opts=[]) {
+	public function select($table, $opts=[]) {
+		//is ID?
+		if(!is_array($opts)) {
+			$opts = [ 'id' => $opts ];
+		}
 		//set vars
 		$table = $this->formatTable($table);
 		//build sql

@@ -6,41 +6,21 @@ class Csrf {
 
 	protected $crypt = null;
 	protected $session = null;
+
+	protected $injectHead = false;
 	protected $perRequest = false;
 
 	protected $host = '';
 	protected $field = '_csrf';
-	protected $methods = array( 'POST', 'PUT', 'PATCH', 'DELETE' );
+	protected $methods = [ 'POST', 'PUT', 'PATCH', 'DELETE' ];
 
-	public function __construct(array $opts=array()) {
+	public function __construct(array $opts=[]) {
 		//set properties
 		foreach($opts as $k => $v) {
 			if(property_exists($this, $k)) {
 				$this->$k = $v;
 			}
 		}
-	}
-
-	public function getOrigin() {
-		//set default
-		$origHost = '';
-		//get origin host
-		if(isset($_SERVER['HTTP_ORIGIN']) && $_SERVER['HTTP_ORIGIN']) {
-			$origHost = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_HOST);
-		} elseif(isset($_SERVER['HTTP_REFERER']) && $_SERVER['HTTP_REFERER']) {
-			$origHost = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_HOST);
-		}
-		//return
-		return $origHost;
-	}
-
-	public function verifyOrigin() {
-		//is protected method?
-		if(!in_array($_SERVER['REQUEST_METHOD'], $this->methods)) {
-			return true;
-		}
-		//check token
-		return $_SERVER['HTTP_HOST'] === $this->getOrigin();
 	}
 
 	public function getToken($regen=false) {
@@ -61,6 +41,23 @@ class Csrf {
 		return isset($_POST[$this->field]) && $_POST[$this->field] === $this->getToken();
 	}
 
+	public function sameOrigin($anyMethod=false) {
+		//is protected method?
+		if(!$anyMethod && !in_array($_SERVER['REQUEST_METHOD'], $this->methods)) {
+			return true;
+		}
+		//set vars
+		$origHost = '';
+		//get origin host
+		if(isset($_SERVER['HTTP_ORIGIN']) && $_SERVER['HTTP_ORIGIN']) {
+			$origHost = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_HOST);
+		} elseif(isset($_SERVER['HTTP_REFERER']) && $_SERVER['HTTP_REFERER']) {
+			$origHost = parse_url($_SERVER['HTTP_REFERER'], PHP_URL_HOST);
+		}
+		//check host matches
+		return $_SERVER['HTTP_HOST'] === $origHost;
+	}
+
 	public function injectHtml($content) {
 		//set vars
 		$token = '';
@@ -77,8 +74,8 @@ class Csrf {
 			}
 			exit();
 		}
-		//inject token before </head> tag?
-		if($isHtml && stripos($content, '</head>') !== false) {
+		//inject token in <head> tag?
+		if($isHtml && $this->injectHead && stripos($content, '</head>') !== false) {
 			//get token
 			$token = $token ?: $this->getToken($this->perRequest);
 			//create meta tag

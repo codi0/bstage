@@ -10,7 +10,7 @@ class Collection extends \ArrayObject {
 	protected $_orm = null;
 	protected $_ormOpts = [];
 
-	public function __construct(array $opts=array()) {
+	public function __construct(array $opts=[]) {
 		//loop through opts
 		foreach($opts as $k => $v) {
 			if(property_exists($this, "_$k")) {

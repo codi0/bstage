@@ -342,7 +342,10 @@ class Orm {
 	}
 
 	public function getAll($name, array $opts=[]) {
-		return $this->get($name, array_merge($opts, [ 'collection' => true ]));
+		//force collection
+		$opts['collection'] = true;
+		//return
+		return $this->get($name, $opts);
 	}
 
 	public function mapper($model) {

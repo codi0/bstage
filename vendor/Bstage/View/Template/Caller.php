@@ -60,7 +60,19 @@ class Caller implements \ArrayAccess {
 		//parse callbacks
 		$callbacks = array_map('trim', explode('|', $key));
 		//is function call?
-		if(!preg_match('/^(\w+)\(([^\)]+)?\)$/', $callbacks[0])) {
+		if(preg_match('/^(\w+)\(([^\)]+)?\)$/', $callbacks[0], $match)) {
+			//could be class method?
+			if(!isset($match[2]) || !$match[2]) {
+				//test data
+				$method = $match[1];
+				$tmp = $this->engine->getData(trim($this->prefix, '.'));
+				//is class method?
+				if(is_object($tmp) && method_exists($tmp, $method)) {
+					$key = array_shift($callbacks);
+					$val = $tmp->$method();
+				}
+			}
+		} else {
 			//check data store
 			$key = array_shift($callbacks);
 			$val = $this->engine->getData(trim($this->prefix . $key, '.'), '');

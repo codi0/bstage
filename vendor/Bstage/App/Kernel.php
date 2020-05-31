@@ -318,7 +318,7 @@ class Kernel {
 		return null;
 	}
 
-	public function file($file, $value=false) {
+	public function file($file, $value=null) {
 		//set vars
 		$paths = [];
 		//is absolute path?
@@ -345,7 +345,7 @@ class Kernel {
 		//loop through paths
 		foreach($paths as $path) {
 			//file exists?
-			if(!is_file($path)) {
+			if($value !== false && !is_file($path)) {
 				continue;
 			}
 			//get file content?
@@ -486,12 +486,12 @@ class Kernel {
 
 	public function route($route, $method=null, $callback=null) {
 		//using route callback?
-		if($callback && is_callable($callback)) {
-			$method = $callback;
-			$callback = null;
+		if($method && is_callable($method)) {
+			$callback = $method;
+			$method = null;
 		}
 		//add or call?
-		if(is_string($method) || is_callable($method)) {
+		if(is_callable($callback)) {
 			return $this->router->add($route, $method, $callback);
 		} else {
 			return $this->router->call($route, $method, $callback);

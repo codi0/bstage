@@ -44,10 +44,10 @@ class Config {
 			//loop through segments
 			foreach($idArr as $i2 => $segment) {
 				//set vars
-				$res = '%%null%%';
+				$res = '[NULL]';
 				//is array like?
 				if(is_array($data) || $data instanceof \ArrayAccess) {
-					if(array_key_exists($segment, $data)) {
+					if(array_key_exists($segment, (array) $data)) {
 						$res = $data[$segment];
 					}
 				} else if(is_object($data)) {
@@ -58,13 +58,13 @@ class Config {
 							$res = $data->$segment();
 						}
 					} else {
-						if(isset($data->$segment)) {
+						if(property_exists($data, $segment)) {
 							$res = $data->$segment;
 						}
 					}
 				}
 				//not found?
-				if($res === '%%null%%') {
+				if($res === '[NULL]') {
 					if($i1 == 1) {
 						return $default;
 					} else {

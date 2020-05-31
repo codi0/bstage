@@ -108,7 +108,7 @@ class TableRow extends \ArrayObject {
 
 	public function offsetSet($key, $val) {
 		//mark as changed?
-		if(!array_key_exists($key, $this) || $this[$key] != $val) {
+		if(!parent::offsetExists($key) || $this[$key] != $val) {
 			if(!is_object($val)) {
 				$this->_changes[] = $key;
 			}
@@ -119,7 +119,7 @@ class TableRow extends \ArrayObject {
 
 	public function offsetUnset($key) {
 		//key exists?
-		if(array_key_exists($key, $this)) {
+		if(parent::offsetExists($key)) {
 			if($this[$key] !== null && !is_object($this[$key])) {
 				$this->_changes[] = $key;
 			}

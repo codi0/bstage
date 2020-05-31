@@ -204,7 +204,7 @@ class Client {
 		);
 		//wrap result?
 		if($opts['wrap'] && $this->dataClass) {
-			$result = new $this->dataClass($result);
+			$result = new $this->dataClass([ 'data' => $result ]);
 		}
 		//return
 		return $result;

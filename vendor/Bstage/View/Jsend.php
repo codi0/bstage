@@ -8,7 +8,6 @@ class Jsend {
 	protected $code;
 	protected $message;
 	protected $data;
-	protected $override;
 
 	protected $events;
 
@@ -38,7 +37,7 @@ class Jsend {
 		return $this;
 	}
 
-	public function fail($message, $code=null) {
+	public function fail($message=null, $code=null) {
 		//set properties
 		$this->status = 'fail';
 		$this->message = $message;
@@ -47,7 +46,7 @@ class Jsend {
 		return $this;
 	}
 
-	public function error($message, $code=null) {
+	public function error($message=null, $code=null) {
 		//set properties
 		$this->status = 'error';
 		$this->message = $message;
@@ -71,44 +70,34 @@ class Jsend {
 		return $this;
 	}
 
-	public function override($data) {
-		//set property
-		$this->status = 'success';
-		$this->override = $data;
-		//chain it
-		return $this;
-	}
-
 	public function render(array $opts=[]) {
 		//format opts
 		$opts = array_merge([
 			'string' => false,
 			'headers' => true,
 		], $opts);
-		//use default render?
-		if(!($jsend = $this->override)) {
-			//set status?
-			if(!$this->status) {
-				$this->status = $this->data ? 'success' : 'fail';
+		//set vars
+		$jsend = [];
+		//set status?
+		if(!$this->status) {
+			$this->status = $this->data ? 'success' : 'fail';
+		}
+		//set message?
+		if(!$this->message) {
+			$this->message = ($this->status === 'success') ? null : 'Invalid call';
+		}
+		//set properties
+		foreach([ 'status', 'message', 'code', 'data' ] as $key) {
+			if($this->$key) {
+				$jsend[$key] = $this->$key;
 			}
-			//set message?
-			if(!$this->message) {
-				$this->message = ($this->status === 'success') ? null : 'Invalid call';
-			}
-			//jsend array
-			$jsend = array(
-				'status' => $this->status,
-				'message' => $this->message,
-				'code' => $this->code,
-				'data' => $this->data,
-			);
-			//jsend event?
-			if($this->events) {
-				//EVENT: jsend.output
-				$event = $this->events->dispatch('jsend.output', $jsend);
-				//update jsend
-				$jsend = $event->getParams();
-			}
+		}
+		//jsend event?
+		if($this->events) {
+			//EVENT: jsend.output
+			$event = $this->events->dispatch('jsend.output', $jsend);
+			//update jsend
+			$jsend = $event->getParams();
 		}
 		//convert to json
 		$jsend = json_encode($jsend, JSON_PRETTY_PRINT);

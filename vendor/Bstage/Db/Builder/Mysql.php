@@ -66,6 +66,11 @@ class MySql {
 			$values = [];
 			//format insert values
 			foreach($opts['fields'] as $key => $val) {
+				//is scalar?
+				if(!is_scalar($val)) {
+					unset($opts['fields'][$key]);
+					continue;
+				}
 				//add value
 				$values[] = '?';
 				//add param
@@ -136,6 +141,11 @@ class MySql {
 		}
 		//format fields
 		foreach($fields as $k => $v) {
+			//remove field?
+			if(!is_scalar($v)) {
+				unset($fields[$k]);
+				continue;
+			}
 			//stop here?
 			if(!$table || preg_match('/\.|\(|\s/', $v)) {
 				continue;

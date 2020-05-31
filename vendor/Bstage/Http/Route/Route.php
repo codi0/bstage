@@ -7,15 +7,27 @@ class Route {
 	protected $name;
 	protected $prefix;
 	protected $params = [];
+	protected $methods = [];
+	protected $callback = null;
 
-	public function __construct($name, array $params=[], $prefix='') {
-		$this->name = $name;
-		$this->params = $params;
-		$this->prefix = $prefix;
+	public function __construct(array $opts=[]) {
+		foreach($opts as $k => $v) {
+			if(property_exists($this, $k)) {
+				$this->$k = $v;
+			}
+		}
 	}
 
 	public function getName() {
 		return $this->name;
+	}
+
+	public function getMethods() {
+		return $this->methods;
+	}
+
+	public function getCallback() {
+		return $this->callback;
 	}
 
 	public function getPrefix() {

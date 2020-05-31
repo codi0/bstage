@@ -85,6 +85,15 @@ class Uri {
 		return $authority;
 	}
 
+	public function getDomain() {
+		$uri = '';
+		$authority = $this->getAuthority();
+		if($this->scheme && $authority) {
+			$uri .= $this->scheme . '://' . $authority;
+		}
+		return $uri;
+	}
+
 	public function getUserInfo() {
 		return $this->userInfo;
 	}

@@ -88,8 +88,8 @@ function bstage($name=null, $callback=null) {
 					'fileNames' => [ 'core', 'secrets' ],
 				], $opts));
 			},
-			'cookie' => function(array $opts, $app) {
-				return new \Bstage\Http\Cookie(array_merge([
+			'cookies' => function(array $opts, $app) {
+				return new \Bstage\Http\CookieHandler(array_merge([
 					'crypt' => $app->crypt,
 					'signKey' => isset($opts['signKey']) ? $opts['signKey'] : $app->secret('cookie_sign'),
 					'encryptKey' => isset($opts['encryptKey']) ? $opts['encryptKey'] : $app->secret('cookie_encrypt'),
@@ -102,6 +102,7 @@ function bstage($name=null, $callback=null) {
 				return new \Bstage\Security\Csrf(array_merge([
 					'crypt' => $app->crypt,
 					'session' => $app->session,
+					'injectHead' => (bool) $app->config('csrf.head'),
 				], $opts));
 			},
 			'db' => function(array $opts, $app) {
@@ -199,9 +200,10 @@ function bstage($name=null, $callback=null) {
 				], $opts));
 			},
 			'session' => function(array $opts, $app) {
-				return new \Bstage\Http\Session\Cookie(array_merge([
+				return new \Bstage\Http\Session(array_merge([
 					'lifetime' => 3600,
-					'cookie' => $app->cookie,
+					'cookies' => $app->cookies,
+					'events' => $app->events,
 				], $opts));
 			},
 			'shortcodes' => function(array $opts, $app) {
@@ -251,6 +253,12 @@ function bstage($name=null, $callback=null) {
 		$app = new \Bstage\App\Kernel($opts);
 		//Event: add debug bar
 		$app->events->add('app.response', function($event) use($app) {
+			//is web scope?
+			if($scope = $app->meta('scope')) {
+				if($scope !== 'web') {
+					return;
+				}
+			}
 			//is html response?
 			if($event->response->getMediaType() !== 'html') {
 				return;
