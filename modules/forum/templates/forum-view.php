@@ -13,7 +13,7 @@
 				<div class="author">
 					<a href="<?= $message['url(profile/$user.id)'] ?>"><?= $message['user.username|ucfirst'] ?></a>
 				</div>
-				<div class="time">
+				<div class="time small">
 					<?= $message['dateCreated|relativeTime'] ?>
 				</div>
 				<?php if($message['user.avatar']) { ?>

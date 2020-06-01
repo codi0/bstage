@@ -12,14 +12,14 @@
 				<div class="title">
 					<a href="<?= $topic['url(forum/topic/$id)'] ?>"><?= $topic['title'] ?></a>
 				</div>
-				<div class="author meta">
+				<div class="author small">
 					<a class="alt" href="<?= $topic['url(profile/$author_id)'] ?>"><?= $topic['author_name|ucfirst'] ?></a>
 					&middot;
 					<a class="alt" href="<?= $topic['url(forum/$category_id)'] ?>"><?= $topic['category_name'] ?></a>
 					<span class="replies alt">&middot; <?= $topic['reply_num'] . ($topic['reply_num'] == 1 ? ' reply' : ' replies') ?></span>
 				</div>
 			</div>
-			<div class="activity meta">
+			<div class="activity small">
 				<div class="when">
 					<a href="<?= $topic['url(forum/topic/$id/latest)'] ?>"><?= $topic['last_msg_time|relativeTime'] ?></a>
 				</div>
