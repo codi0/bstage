@@ -10,7 +10,7 @@
 	<?php } else { ?>
 	<link rel="canonical" href="<?= $tpl['meta.canonical'] ?: $tpl->url(null, []) ?>">
 	<?php } ?>
-	<?= $tpl->asset('css/skeleton.css'); ?>
+	<link rel="stylesheet" href="https://repos.codi.io/fstage/0.0.1/fstage.css">
 	<?= $tpl->block('meta') ?>
 </head>
 <body>
