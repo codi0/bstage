@@ -294,7 +294,7 @@ class Form {
 		//success message?
 		if($this->message) {
 			if($this->isValid || (is_null($this->isValid) && $this->input->get('success') == 'true')) {
-				$html .= '<div class="notice updated">' . $this->message . '</div>' . "\n";
+				$html .= '<div class="notice info">' . $this->message . '</div>' . "\n";
 			}
 		}
 		//error summary?
@@ -309,7 +309,7 @@ class Form {
 			}
 			//loop through errors
 			foreach((array) $val as $v) {
-				$html .= '<div class="notice error">' . $v . '</div>' . "\n";
+				$html .= '<div class="error">' . $v . '</div>' . "\n";
 			}
 		}
 		//add ID field?
@@ -372,7 +372,7 @@ class Form {
 			$html .= trim($field) . "\n";
 			//display any errors
 			foreach((array) $opts['error'] as $error) {
-				$html .= '<div class="notice error">' . $error . '</div>' . "\n";
+				$html .= '<div class="error">' . $error . '</div>' . "\n";
 			}
 			//close field wrapper
 			if($opts['type'] !== 'hidden') {
