@@ -6,6 +6,7 @@ class Engine {
 
 	protected $paths = [];
 	protected $theme = '';
+	protected $layout = 'base';
 	protected $ext = 'php';
 
 	protected $blocks = [];
@@ -70,6 +71,13 @@ class Engine {
 		return true;
 	}
 
+	public function setLayout($name) {
+		//set property
+		$this->layout = $name;
+		//return
+		return true;
+	}
+
 	public function getData($key, $default=null) {
 		return $this->data->get($key, $default);
 	}
@@ -118,14 +126,16 @@ class Engine {
 		}
 		//template event?
 		if($this->events) {
-			//EVENT: template.theme
-			$event = $this->events->dispatch('template.theme', [
+			//EVENT: template.select
+			$event = $this->events->dispatch('template.select', [
 				'theme' => $this->theme,
+				'layout' => $this->layout,
 				'template' => $template,
 				'data' => $this->data,
 			]);
 			//get updated values
 			$this->theme = $event->theme;
+			$this->layout = $event->layout;
 			$template = $event->template;
 		}
 		//add theme path?
@@ -220,8 +230,8 @@ class Engine {
 				echo $output;
 			} else {
 				//set layout?
-				if(!isset($this->extend[$file])) {
-					$this->_extend('layouts/base', false);
+				if($this->layout && !isset($this->extend[$file])) {
+					$this->_extend('layouts/' . $this->layout, false);
 				}
 				//add to main
 				$this->_start('main');

@@ -4,22 +4,21 @@ namespace Bstage\Protocol;
 
 class Opwr {
 
-	protected $crypt = null;
-	protected $events = null;
-	protected $createUrl = null;
-	protected $httpClient = null;
+	protected $crypt;
+	protected $events;
+	protected $httpClient;
 
 	protected $user = '';
 	protected $endpoint = '';
-	protected $leeway = 30;
-
 	protected $signKeys = [];
 	protected $encryptKeys = [];
 
+	protected $leeway = 30;
+	protected $versions = [ 'v1' ];
 	protected $allowedCiphers = [ 'aes-256-ctr' ];
-	protected $allowedHashes = [ 'sha256', 'sha384', 'sha512' ];
+	protected $allowedHashes = [ 'sha256' ];
 
-	protected $providers = [ 'opwr' => 'https://api.openwrite.xyz' ];
+	protected $providers = [ 'opwr' => 'https://api.openwrite.xyz/v1' ];
 
 	public function __construct(array $opts=[]) {
 		//set properties
@@ -42,6 +41,7 @@ class Opwr {
 			'from' => $this->user, //identifer for sending user
 			'to' => '', //optional identifier for recipient user
 			'secret' => '', //optional shared secret to include in signature
+			'version' => '', //api version to call
 		], $opts);
 		//valid hash algorthim?
 		if(!in_array($opts['hash'], $this->allowedHashes)) {
@@ -51,11 +51,29 @@ class Opwr {
 		$encryptedBody = '';
 		$action = trim($action, '/');
 		$endpoint = trim($endpoint, '/');
+		//negotiate version?
+		if(!$opts['version']) {
+			//ask about api
+			$response = $this->httpClient->send($endpoint . '/about');
+			//get versions
+			$versions = (array) ($response->get('body.data.versions') ?: []);
+			//check against local versions
+			foreach($this->versions as $v) {
+				if($v && in_array($v, $versions)) {
+					$opts['version'] = $v;
+					break;
+				}
+			}
+			//valid endpoint?
+			if(!$opts['version']) {
+				throw new \Exception('Invalid endpoint');
+			}
+		}
 		//format method
 		$opts['method'] = strtoupper($opts['method']);
 		//format headers
 		$opts['headers'] = $this->formatHeaders($opts['headers'], [
-			'x-opwr-from' => 'user=' . $opts['from'] . '; endpoint=' . $this->endpoint,
+			'x-opwr-from' => 'user=' . $opts['from'] . '; endpoint=' . $this->endpoint . '; version=' . $opts['version'],
 			'x-opwr-to' => 'user=' . $opts['to'] . '; endpoint=' . $endpoint . '; action=' . $action,
 			'x-opwr-time' => 'timestamp=' . time() . '; nonce=' . $this->crypt->nonce(16),
 			'x-opwr-sign' => 'type=rsa; hash=' . $opts['hash'] . '; kid=' . $this->kid($this->signKeys['public']),
@@ -76,7 +94,7 @@ class Opwr {
 				throw new \Exception('Invalid encryption cipher');
 			}
 			//encryption key found?
-			if($encryptKey = $this->key($endpoint, 'encrypt', $opts['to'])) {
+			if($encryptKey = $this->key($endpoint, $opts['version'], 'encrypt', $opts['to'])) {
 				//encrypt message body
 				$encryptedBody = $this->crypt->encryptRsa($opts['body'], $encryptKey, [
 					'hash' => $opts['hash'],
@@ -99,7 +117,7 @@ class Opwr {
 			'encoding' => 'base64',
 		]);
 		//send data
-		return $this->httpClient->send($endpoint . '/' . $action, [
+		return $this->httpClient->send($endpoint . '/' . $opts['version'] . '/' . $action, [
 			'method' => $opts['method'],
 			'headers' => $opts['headers'],
 			'body' => $encryptedBody ?: $opts['body'],
@@ -129,7 +147,7 @@ class Opwr {
 		}
 		//meta data
 		$meta = array(
-			'from' => $this->parseStr($headers['x-opwr-from'], ';', [ 'user', 'endpoint', 'provider' ]),
+			'from' => $this->parseStr($headers['x-opwr-from'], ';', [ 'user', 'endpoint', 'version', 'provider' ]),
 			'to' => $this->parseStr($headers['x-opwr-to'], ';', [ 'user', 'endpoint', 'provider', 'action' ]),
 			'time' => $this->parseStr($headers['x-opwr-time'], ';', [ 'timestamp', 'nonce' ]),
 			'sign' => $this->parseStr($headers['x-opwr-sign'], ';', [ 'type', 'hash', 'kid' ]),
@@ -153,6 +171,11 @@ class Opwr {
 		//valid from endpoint?
 		if(!filter_var($meta['from']['endpoint'], FILTER_VALIDATE_URL)) {
 			$response->fail('x-opwr-from: invalid endpoint');
+			return false;
+		}
+		//valid version?
+		if(!$meta['from']['verison'] || !in_array($meta['from']['version'], $this->versions)) {
+			$response->fail('x-opwr-from: unsupported api version');
 			return false;
 		}
 		//valid to user?
@@ -198,13 +221,12 @@ class Opwr {
 				return false;
 			}
 		}
-		//EVENT: protocol.verify
-		$event = $this->events->dispatch('protocol.verify', [
-			'protocol' => 'opwr',
+		//EVENT: opwr.protocol.verify
+		$event = $this->events->dispatch('opwr.protocol.verify', [
 			'data' => $meta,
 			'response' => $response,
 		]);
-		//update data
+		//get updated values
 		$meta = $event->data ?: $meta;
 		$response = $event->response ?: $response;
 		//stop here?
@@ -248,7 +270,7 @@ class Opwr {
 			}
 		}
 		//get signature verification key?
-		if(!$signKey = $this->key($meta['from']['endpoint'], 'sign', $meta['from']['user'], $meta['sign']['kid'])) {
+		if(!$signKey = $this->key($meta['from']['endpoint'], $meta['from']['version'], 'sign', $meta['from']['user'], $meta['sign']['kid'])) {
 			$response->fail('Failed to retrieve public key from ' . parse_url($meta['from']['endpoint'], PHP_URL_HOST));
 			return false;
 		}
@@ -291,27 +313,25 @@ class Opwr {
 			$endpoint = $master;
 		} else {
 			//has endpoint?
-			if(!$endpoint) return false;
-			//create discovery url
-			$discoverUrl = call_user_func($this->createUrl, $endpoint, [ 'opwr' => 'xyz' ]);
-			//check for canonical endpoint
-			$response = $this->httpClient->send($discoverUrl);
-			//get response url
-			$responseUrl = $response->get('url');
-			//valid endpoint found?
-			if(!$responseUrl || $responseUrl === $discoverUrl) {
+			if(!$endpoint) {
 				return false;
 			}
-			//update endpoint
-			$endpoint = $responseUrl;
+			//attempt to discover endpoint
+			$response = $this->httpClient->send($endpoint . '?opwr=xyz');
+			//valid response?
+			if(!$response->get('body.data.id') !== 'opwr.client') {
+				return false;
+			}
+			//get response data
+			$endpoint = trim($response->get('body.data.endpoint'), '/');
 		}
 		//return
 		return filter_var($endpoint, FILTER_VALIDATE_URL) ? $endpoint : false;
 	}
 
-	public function key($endpoint, $use, $user=null, $kid=null) {
+	public function key($endpoint, $version, $action, $user=null, $kid=null) {
 		//build url
-		$url = $endpoint . '/keys' . ($user ? '/' . $user : '');
+		$url = $endpoint . '/' . $version . '/keys' . ($user ? '/' . $user : '');
 		//make request
 		$response = $this->httpClient->send($url);
 		//keys found?
@@ -321,7 +341,7 @@ class Opwr {
 		//loop through keys
 		foreach($keys as $k => $v) {
 			//valid use?
-			if(!isset($v['use']) || $v['use'] !== $use) {
+			if(!isset($v['use']) || $v['use'] !== $action) {
 				continue;
 			}
 			//valid kid?

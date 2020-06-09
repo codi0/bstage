@@ -11,7 +11,7 @@
  *
  * BSTAGE LIBRARY EVENTS
  *
- * template.theme | runs if template rendered
+ * template.select | runs if template rendered
  * template.head | runs if template rendered
  * template.footer | runs if template rendered
  * template.output | runs if template rendered
@@ -55,19 +55,6 @@ function bstage($name=null, $callback=null) {
 		$opts['name'] = $name;
 		//setup services
 		$opts['services'] = array_merge([
-			'api' => function(array $opts, $app) {
-				return new \Bstage\Protocol\Opwr(array_merge([
-					'crypt' => $app->crypt,
-					'events' => $app->events,
-					'httpClient' => $app->httpClient,
-					'endpoint' => $app->meta('base_url'),
-					'signKeys' => isset($opts['signKeys']) ? $opts['signKeys'] : $app->secret('http_sign', [ 'type' => 'rsa' ]),
-					'encryptKeys' => isset($opts['encryptKeys']) ? $opts['encryptKeys'] : $app->secret('http_encrypt', [ 'type' => 'rsa' ]),
-					'createUrl' => function($path, $query=[], $merge=false) use($app) {
-						return $app->url($path, $query, $merge);
-					},
-				], $opts));
-			},
 			'cache' => function(array $opts, $app) {
 				return new \Bstage\Cache\File(array_merge([
 					'dir' => $app->meta('base_dir') . '/cache',
@@ -186,6 +173,16 @@ function bstage($name=null, $callback=null) {
 					'fromName' => $app->config->get('site.name'),
 				], $opts));
 			},
+			'opwr' => function(array $opts, $app) {
+				return new \Bstage\Protocol\Opwr(array_merge([
+					'crypt' => $app->crypt,
+					'events' => $app->events,
+					'httpClient' => $app->httpClient,
+					'endpoint' => $app->meta('base_url'),
+					'signKeys' => $app->secret('opwr_sign', [ 'type' => 'rsa' ]),
+					'encryptKeys' => $app->secret('opwr_encrypt', [ 'type' => 'rsa' ]),
+				], $opts));
+			},
 			'orm' => function(array $opts, $app) {
 				return new \Bstage\Orm\Orm(array_merge([
 					'app' => $app,
@@ -235,6 +232,7 @@ function bstage($name=null, $callback=null) {
 						return $value . '/templates';
 					}, $app->meta('inc_paths')),
 					'theme' => $app->config->get('site.theme'),
+					'layout' => $app->config->get('site.layout') ?: 'base',
 					'csrf' => $app->csrf,
 					'events' => $app->events,
 					'escaper' => $app->escaper,

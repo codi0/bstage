@@ -10,7 +10,8 @@
 	<?php } else { ?>
 	<link rel="canonical" href="<?= $tpl['meta.canonical'] ?: $tpl->url(null, []) ?>">
 	<?php } ?>
-	<link rel="stylesheet" href="https://repos.codi.io/fstage/0.0.1/fstage.css">
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/codi0/fstage@0.0.2/fstage.min.css">
+	<script defer src="https://cdn.jsdelivr.net/gh/codi0/fstage@0.0.2/fstage.min.js"></script>
 	<?= $tpl->block('meta') ?>
 </head>
 <body>

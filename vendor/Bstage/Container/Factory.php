@@ -22,6 +22,10 @@ class Factory {
 		}
 	}
 
+	public function __get($name) {
+		return $this->create($name);
+	}
+
 	public function get($name) {
 		return $this->create($name);
 	}
