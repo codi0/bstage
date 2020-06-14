@@ -179,8 +179,8 @@ function bstage($name=null, $callback=null) {
 					'events' => $app->events,
 					'httpClient' => $app->httpClient,
 					'endpoint' => $app->meta('base_url'),
-					'signKeys' => $app->secret('opwr_sign', [ 'type' => 'rsa' ]),
-					'encryptKeys' => $app->secret('opwr_encrypt', [ 'type' => 'rsa' ]),
+					'signKeys' => isset($opts['signKeys']) ? $opts['signKeys'] : $app->secret('opwr_sign', [ 'type' => 'rsa' ]),
+					'encryptKeys' => isset($opts['encryptKeys']) ? $opts['encryptKeys'] : $app->secret('opwr_encrypt', [ 'type' => 'rsa' ]),
 				], $opts));
 			},
 			'orm' => function(array $opts, $app) {
