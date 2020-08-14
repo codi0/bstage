@@ -10,24 +10,31 @@ class Kernel {
 		//set defaults
 		$this->meta = array_merge([
 			'name' => 'app',
-			'version' => '0.0.1',
+			'type' => '',
 			'timezone' => 'UTC',
 			'debug' => true,
-			'mobile' => null,
 			'ssl' => null,
 			'host' => '',
+			'path_info' => '',
 			'base_url' => '',
 			'base_url_org' => '',
 			'base_dir' => '',
-			'path_info' => '',
+			'app_dir' => '',
+			'config_dir' => '',
 			'inc_paths' => [],
-			'autoload' => true,
+			'module_paths' => [],
+			'modules' => [],
 			'services' => [],
 			'config' => [],
+			'autoload' => true,
 			'inc' => false,
 			'run' => false,
 		], $opts);
-		//guess base dir?
+		//set app type?
+		if(!$this->meta['type']) {
+			$this->meta['type'] = (stripos($this->meta['name'], 'api') !== false) ? 'api' : 'web';
+		}
+		//set base dir?
 		if(!$this->meta['base_dir']) {
 			//loop through included files
 			foreach(array_reverse(get_included_files()) as $f) {
@@ -37,12 +44,16 @@ class Kernel {
 				}
 			}	
 		}
+		//set app dir?
+		if(!$this->meta['app_dir']) {
+			$this->meta['app_dir'] = $this->meta['base_dir'];
+		}
+		//set config dir?
+		if(!$this->meta['config_dir']) {
+			$this->meta['config_dir'] = $this->meta['app_dir'] . '/modules/' . $this->meta['name'] . '/config';
+		}
 		//set include paths
-		$this->meta['inc_paths'] = array_values(array_unique([
-			dirname(get_included_files()[0]), //last loaded dir
-			$this->meta['base_dir'], //base dir
-			dirname(dirname(dirname(__DIR__))), //library dir
-		]));
+		$this->meta['inc_paths'] = array_unique([ $this->meta['base_dir'], dirname(dirname(dirname(__DIR__))) ]);
 		//get base path
 		$basePath = str_replace($_SERVER['DOCUMENT_ROOT'], '', dirname($_SERVER['SCRIPT_FILENAME']));
 		$reqUri = explode('?', $_SERVER['REQUEST_URI'])[0];
@@ -75,6 +86,10 @@ class Kernel {
 		if($this->meta['autoload']) {
 			spl_autoload_register([ $this, 'autoload' ]);
 		}
+		//load app module
+		$this->module($this->meta['name'], [
+			'path' => $this->meta['app_dir'],
+		]);
 		//handle errors?
 		if(isset($this->errorHandler)) {
 			$this->errorHandler->handle();
@@ -88,7 +103,7 @@ class Kernel {
 	public function __get($key) {
 		//found in service registry?
 		if(!isset($this->meta['services'][$key])) {
-			return null;
+			return (property_exists($this, $key) && $key !== 'meta') ? $this->$key : null;
 		}
 		//set vars
 		$opts = [];
@@ -97,7 +112,7 @@ class Kernel {
 		unset($this->meta['services'][$key]);
 		//has config opts?
 		if(isset($this->config)) {
-			$opts = $this->config->get($key, []);
+			$opts = $this->config->get($key) ?: [];
 		} else if(isset($this->meta['config'])) {
 			$opts = isset($this->meta['config'][$key]) ? $this->meta['config'][$key] : [];
 		}
@@ -108,13 +123,14 @@ class Kernel {
 			//update opts
 			$opts = $event->getParams();
 		}
-		//init services
+		//create service
 		if(is_string($callback)) {
-			$opts['app'] = $this;
-			$this->$key = new $callback($opts);
+			$res = new $callback(array_merge($opts, [ 'app' => $this ]));
 		} else {
-			$this->$key = call_user_func($callback, $opts, $this);
+			$res = call_user_func($callback, $opts, $this);
 		}
+		//cache service
+		$this->$key = $res;
 		//merge meta config?
 		if($key === 'config' && isset($this->meta['config'])) {
 			//merge data
@@ -124,21 +140,6 @@ class Kernel {
 		}
 		//return
 		return $this->$key;
-	}
-
-	public function __set($key, $val) {
-		//save as live service?
-		if(is_object($val) && !($val instanceof \Closure)) {
-			$this->$key = $val;
-			return;
-		}
-		//save in service registry?
-		if(is_callable($val)) {
-			$this->meta['services'][$key] = $val;
-			return;
-		}
-		//invalid property
-		throw new \Exception("Service must be a defined as a callable or an object: $key");
 	}
 
 	public function meta($key, $val=null) {
@@ -153,42 +154,15 @@ class Kernel {
 		return $this->router->dispatch($request);
 	}
 
-	public function run($scope=null) {
+	public function run() {
 		//already run?
 		if($this->meta['run']) {
 			return $this;
 		}
 		//mark as run
 		$this->meta['run'] = true;
-		$this->meta['scope'] = $scope;
-		//loop through modules
-		foreach($this->config->get('modules', []) as $name => $opts) {
-			$this->module($name);
-		}
 		//EVENT: app.init
 		$this->events->dispatch('app.init');
-		//can update?
-		if($this->meta['version']) {
-			//get stored version
-			$confVersion = $this->config->get('version', 0);
-			//update now?
-			if($confVersion < $this->meta['version']) {
-				//create DB schema?
-				if(isset($this->db)) {
-					//loop through paths
-					foreach($this->meta['inc_paths'] as $path) {
-						$this->db->createSchema($path . '/database/schema.sql');
-					}
-				}
-				//EVENT: app.updating
-				$this->events->dispatch('app.updating', [
-					'from' => $confVersion,
-					'to' => $this->meta['version'],
-				]);
-				//save new version number
-				$this->config->set('version', $this->meta['version']);
-			}
-		}
 		//can output?
 		if(!$this->meta['inc']) {
 			//create request
@@ -226,96 +200,125 @@ class Kernel {
 		$this->events->dispatch('app.shutdown');
 	}
 
-	public function module($name, $required=true) {
-		//cache
-		static $cache = [];
+	public function module($name, array $opts=[]) {
 		//load module?
-		if(!isset($cache[$name])) {
-			//get module opts
-			$opts = $this->config->get("modules.$name") ?: [];
-			//set defaults
+		if(!isset($this->meta['modules'][$name])) {
+			//prevent race condition
+			$this->meta['modules'][$name] = false;
+			//merge opts
 			$opts = array_merge([
-				'scope' => '',
+				'required' => true,
+				'uri' => '',
 				'path' => '',
 			], $opts);
-			//valid scope?
-			if($opts['scope'] && $this->meta['scope'] && $opts['scope'] !== $this->meta['scope']) {
-				$cache[$name] = false;
+			//valid uri match?
+			if($opts['uri'] && strpos($this->meta['path_info'], $opts['uri']) === false) {
 				return false;
 			}
-			//valid path?
-			if($opts['path'] && strpos($this->meta['path_info'], $opts['path']) === false) {
-				$cache[$name] = false;
-				return false;
-			}
-			//loop through loader paths
-			foreach($this->meta['inc_paths'] as $path) {
-				//is another module path?
-				if(strpos($path, '/modules/') !== false) {
+			//get include paths
+			$incPaths = (array) ($opts['path'] ?: $this->meta['inc_paths']);
+			//loop through include paths
+			foreach($incPaths as $path) {
+				//get module path
+				$path = $path . '/modules/' . $name;
+				//get module class
+				$class = ucfirst($name) . '\\Module';
+				//load bootstrap?
+				if(!is_file($path . '/Module.php')) {
 					continue;
 				}
-				//get module folder
-				$folder = $path . '/modules/' . $name;
-				//boostrap file found?
-				if(is_file($folder . '/Bootstrap.php')) {
-					//add include path
-					$this->meta['inc_paths'][] = $folder;
-					//load module
-					$cache[$name] = (function($app, $__dir) {
-						return include($__dir . '/Bootstrap.php') ?: true;
-					})($this, $folder);
-					//add template path?
-					if(isset($this->templates)) {
-						$this->templates->addPath($folder . '/templates');
-					}
-				}
+				//load module file
+				include_once($path . '/Module.php');
+				//cache path
+				$this->meta['module_paths'][$name] = $path;
+				//init module
+				$this->meta['modules'][$name] = new $class([
+					'app' => $this,
+					'dir' => $path,
+				]);
+				//stop here
+				break;
 			}
 			//module found?
-			if(!isset($cache[$name])) {
-				//show error?
-				if($required) {
-					throw new \Exception("Module not found: $name");
-				}
-				//failed
-				$cache[$name] = false;
+			if(!$this->meta['modules'][$name] && $opts['required']) {
+				throw new \Exception("Module not found: $name");
 			}
 		}
 		//return
-		return $cache[$name];
+		return $this->meta['modules'][$name];
 	}
 
-	public function class($class, $name='') {
-		//set vars
-		$classes = [];
-		$prefix = explode('\\', $class)[0];
-		$vendors = [ ucfirst($this->meta['name']), 'Bstage' ];
-		//add name?
-		if(!empty($name)) {
-			$name = str_replace(' ', '', ucwords(str_replace([ '-', '_' ], ' ', $name)));
-			$class = str_replace('{name}', ucfirst($name), $class);
+	public function service($key, $val=null) {
+		//get service?
+		if($val === null) {
+			return $this->__get($key);
 		}
-		//check vendors?
-		if(in_array($prefix, $vendors)) {
-			$classes[] = $class;
+		//set service?
+		if(is_callable($val) || is_string($val)) {
+			//add to registry
+			$this->meta['services'][$key] = $val;
 		} else {
-			//loop through vendors
-			foreach($vendors as $vendor) {
-				//format class name
-				if(strpos($class, '{vendor}') !== false) {
-					$classes[] = str_replace('{vendor}', $vendor, $class);
-				} else {
-					$classes[] = $vendor . '\\' . $class;
-				}
+			//remove old service?
+			if(isset($this->meta['services'][$key])) {
+				unset($this->meta['services'][$key]);
 			}
+			//add as service
+			$this->$key = $val;
 		}
-		//does class exist?
-		foreach($classes as $c) {
-			if(class_exists($c)) {
-				return $c;
-			}
+	}
+
+	public function config($key, $val='[NULL]') {
+		if($val === '[NULL]') {
+			return $this->config->get($key);
+		} else {
+			return $this->config->set($key, $val);
 		}
-		//not found
-		return null;
+	}
+
+	public function route($route, $method=null, $callback=null) {
+		//using route callback?
+		if($callback === null) {
+			$callback = $method;
+			$method = null;
+		}
+		//add or call?
+		if($callback && (is_callable($callback) || is_string($callback))) {
+			return $this->router->add($route, $method, $callback);
+		} else {
+			return $this->router->call($route, $callback);
+		}
+	}
+
+	public function http($uri, array $opts=[]) {
+		return $this->httpClient->send($uri, $opts);
+	}
+
+	public function middleware($name, $callback) {
+		return $this->httpMiddleware->add($name, $callback);
+	}
+
+	public function event($name, $callback=[]) {
+		if(is_callable($callback)) {
+			return $this->events->add($name, $callback);
+		} else {
+			return $this->events->dispatch($name, $callback);
+		}
+	}
+
+	public function model($name, $opts=[]) {
+		return $this->orm->get($name, $opts);
+	}
+
+	public function view($name, array $params=[]) {
+		return $this->templates->render($name, $params);
+	}
+
+	public function input($name, $method=null) {
+		return $this->input->find($method, $name);
+	}
+
+	public function form($name, $method='post', $action='') {
+		return $this->formFactory->create($name, $method, $action);
 	}
 
 	public function file($file, $value=null) {
@@ -327,7 +330,7 @@ class Kernel {
 			$paths[] = $file;
 		} else {
 			//add potential paths
-			foreach($this->meta['inc_paths'] as $path) {
+			foreach($this->meta['module_paths'] as $path) {
 				$paths[] = $path . '/' . $file;
 			}
 		}
@@ -368,8 +371,8 @@ class Kernel {
 		}
 		//is local file?
 		if($url && $url[0] === '/') {
-			//remove web dir
-			$url = str_replace($this->meta['inc_paths'][0] . '/', '', $url);
+			//remove base dir
+			$url = str_replace($this->meta['base_dir'] . '/', '', $url);
 			//stop here?
 			if($url[0] === '/' && strpos($url, '.') !== false) {
 				return null;
@@ -472,60 +475,69 @@ class Kernel {
 		return isset($data['key']) ? $data['key'] : $data;
 	}
 
-	public function config($key, $val='[NULL]') {
-		if($val === '[NULL]') {
-			return $this->config->get($key);
+	public function class($class, $name='') {
+		//set vars
+		$classes = [];
+		//parse name?
+		if($name && strpos($name, '@') !== false) {
+			list($vendor, $name) = explode('@', $name, 2);
+			$class = str_replace('{vendor}', ucfirst($vendor), $class);
+		}
+		//replace name?
+		if($name && strpos($class, '{name}') !== false) {
+			$name = str_replace(' ', '', ucwords(str_replace([ '-', '_' ], ' ', $name)));
+			$class = str_replace('{name}', ucfirst($name), $class);
+		}
+		//check vendors?
+		if(strpos($class, '{vendor}') !== false) {
+			//get vendors
+			$vendors = array_keys($this->meta['module_paths']);
+			$vendors = array_merge($vendors, [ explode('\\', __NAMESPACE__)[0] ]);
+			//loop through vendors
+			foreach($vendors as $vendor) {
+				$classes[] = str_replace('{vendor}', ucfirst($vendor), $class);
+			}
 		} else {
-			return $this->config->set($key, $val);
+			//set class
+			$classes[] = $class;
 		}
-	}
-
-	public function input($name, $method=null) {
-		return $this->input->find($method, $name);
-	}
-
-	public function route($route, $method=null, $callback=null) {
-		//using route callback?
-		if($method && is_callable($method)) {
-			$callback = $method;
-			$method = null;
+		//loop through classes
+		foreach($classes as $class) {
+			//class exists?
+			if(class_exists($class)) {
+				return $class;
+			}
 		}
-		//add or call?
-		if(is_callable($callback)) {
-			return $this->router->add($route, $method, $callback);
-		} else {
-			return $this->router->call($route, $method, $callback);
-		}
-	}
-
-	public function http($uri, array $opts=[]) {
-		return $this->httpClient->send($uri, $opts);
-	}
-
-	public function form($name, $method='post', $action='') {
-		return $this->formFactory->create($name, $method, $action);
-	}
-
-	public function model($name, $opts=[]) {
-		return $this->orm->get($name, $opts);
-	}
-
-	public function view($name, array $params=[]) {
-		return $this->templates->render($name, $params);
+		//not found
+		return null;
 	}
 
 	protected function autoload($class) {
 		//set vars
-		$paths = $this->meta['inc_paths'];
+		$paths = [];
 		$sep = (strpos($class, '\\') !== false) ? '\\' : '_';
-		$classPath = trim(str_replace($sep, '/', $class), '/');
+		$file = trim(str_replace($sep, '/', $class), '/') . '.php';
+		//add vendor paths
+		foreach($this->meta['inc_paths'] as $path) {
+			$paths[] = $path . '/vendor/' . $file;
+		}
+		//add module paths
+		foreach($this->meta['module_paths'] as $name => $path) {
+			//module match found?
+			if(stripos($file, $name . '/') === 0) {
+				//build file path
+				$filePath = $path . '/src/' . str_replace(ucfirst($name) . '/', '', $file);
+				//prepend to array
+				array_unshift($paths, $filePath);
+				//stop here
+				break;
+			}
+		}
 		//loop through paths
 		foreach($paths as $path) {
-			//build class file path
-			$file = $path . '/vendor/' . $classPath . '.php';
 			//match found?
-			if(is_file($file)) {
-				include($file);
+			if(is_file($path)) {
+				include($path);
 				break;
 			}
 		}

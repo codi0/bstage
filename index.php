@@ -10,11 +10,5 @@ $app = bstage('app', [
 	'debug' => true,
 ]);
 
-//define routes
-$app->route('/', function($request, $response) use($app) {
-	//render view
-	$app->view('home');
-});
-
 //run app
 $app->run();

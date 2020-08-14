@@ -4,22 +4,9 @@
  * BSTAGE.RUN() EVENTS
  *
  * app.init
- * app.updating
  * app.request
  * app.response
  * app.shutdown
- *
- * BSTAGE LIBRARY EVENTS
- *
- * template.select | runs if template rendered
- * template.head | runs if template rendered
- * template.footer | runs if template rendered
- * template.output | runs if template rendered
- * jsend.output | runs if jsend rendered
- * error.handle | runs if uncaught exception found
- * mail.send | runs if email sent
- * protocol.verify | runs if protocol executed
- *
 **/
 
 function bstage($name=null, $callback=null) {
@@ -34,7 +21,7 @@ function bstage($name=null, $callback=null) {
 	$name = $lastRun = $name ?: $lastRun;
 	//bootstrap app?
 	if(!isset($appCache[$name])) {
-		//set constants
+		//set constantsapp
 		if(!defined('BSTAGE_MIN_PHP')) define('BSTAGE_MIN_PHP', '5.6.0');
 		//min php version found?
 		if(version_compare(PHP_VERSION, BSTAGE_MIN_PHP, '<')) {
@@ -57,7 +44,7 @@ function bstage($name=null, $callback=null) {
 		$opts['services'] = array_merge([
 			'cache' => function(array $opts, $app) {
 				return new \Bstage\Cache\File(array_merge([
-					'dir' => $app->meta('base_dir') . '/cache',
+					'dir' => $app->meta('app_dir') . '/storage/cache',
 				], $opts));
 			},
 			'captcha' => function(array $opts, $app) {
@@ -71,8 +58,8 @@ function bstage($name=null, $callback=null) {
 			},
 			'config' => function(array $opts, $app) {
 				return new \Bstage\Container\Config(array_merge([
-					'dir' => $app->meta('base_dir') . '/config',
-					'fileNames' => [ 'core', 'secrets' ],
+					'dir' => $app->meta('config_dir'),
+					'fileNames' => [ 'app', 'secrets' ],
 				], $opts));
 			},
 			'cookies' => function(array $opts, $app) {
@@ -90,6 +77,13 @@ function bstage($name=null, $callback=null) {
 					'crypt' => $app->crypt,
 					'session' => $app->session,
 					'injectHead' => (bool) $app->config('csrf.head'),
+				], $opts));
+			},
+			'dataset' => function(array $opts, $app) {
+				return new \Bstage\Container\Factory(array_merge([
+					'classFormats' => [
+						'Bstage\\Dataset\\{name}',
+					],
 				], $opts));
 			},
 			'db' => function(array $opts, $app) {
@@ -113,7 +107,7 @@ function bstage($name=null, $callback=null) {
 			},
 			'events' => function(array $opts, $app) {
 				return new \Bstage\Event\Dispatcher(array_merge([
-					'context' => $app,
+					'app' => $app,
 				], $opts));
 			},
 			'formFactory' => function(array $opts, $app) {
@@ -135,7 +129,7 @@ function bstage($name=null, $callback=null) {
 				return new \Bstage\Http\Client($opts);
 			},
 			'httpFactory' => function(array $opts, $app) {
-				return new \Bstage\Http\Factory($opts);
+				return new \Bstage\Http\Message\Factory($opts);
 			},
 			'httpMiddleware' => function(array $opts, $app) {
 				return new \Bstage\Http\RequestHandler($opts);
@@ -162,7 +156,7 @@ function bstage($name=null, $callback=null) {
 						'Bstage\\Debug\\Logger',
 					],
 					'defaultOpts' => [
-						'filePath' => $app->meta('base_dir') . '/logs/{name}.log',
+						'filePath' => $app->meta('app_dir') . '/storage/logs/' . $app->meta('name') . '.{name}.log',
 					],
 				], $opts));
 			},
@@ -191,14 +185,15 @@ function bstage($name=null, $callback=null) {
 				], $opts));
 			},
 			'router' => function(array $opts, $app) {
-				return new \Bstage\Http\Route\Dispatcher(array_merge([
+				return new \Bstage\Route\Dispatcher(array_merge([
+					'app' => $app,
 					'httpFactory' => $app->httpFactory,
-					'context' => $app,
 				], $opts));
 			},
 			'session' => function(array $opts, $app) {
-				return new \Bstage\Http\Session(array_merge([
-					'lifetime' => 3600,
+				return new \Bstage\Http\Session\Cookie(array_merge([
+					'lifetime' => 1800,
+					'refresh' => 300,
 					'cookies' => $app->cookies,
 					'events' => $app->events,
 				], $opts));
@@ -209,9 +204,8 @@ function bstage($name=null, $callback=null) {
 				], $opts));
 			},
 			'templates' => function(array $opts, $app) {
-				return new \Bstage\View\Template\Engine(array_merge([
+				$tpl = new \Bstage\View\Template\Engine(array_merge([
 					'data' => [
-						'auth' => $app->auth,
 						'meta' => [
 							'name' => $app->config('site.name'),
 							'email' => $app->config('site.email'),
@@ -222,22 +216,21 @@ function bstage($name=null, $callback=null) {
 						'url' => function($value=null, $query=null, $merge=false) use($app) {
 							return $app->url($value, $query, $merge);
 						},
-						'html' => function($tag, $val) use($app) {
-							$args = func_get_args();
-							$tag = array_shift($args);
-							return $app->html->$tag(...$args);
-						},
 					],
-					'paths' => array_map(function($value) {
-						return $value . '/templates';
-					}, $app->meta('inc_paths')),
 					'theme' => $app->config->get('site.theme'),
 					'layout' => $app->config->get('site.layout') ?: 'base',
 					'csrf' => $app->csrf,
-					'events' => $app->events,
 					'escaper' => $app->escaper,
+					'events' => $app->events,
+					'html' => $app->html,
 					'shortcodes' => $app->shortcodes,
 				], $opts));
+				$app->events->add('template.select', function($e) use($app, $tpl) {
+					if(isset($app->auth)) {
+						$tpl->setData('auth', $app->auth->model());
+					}
+				});
+				return $tpl;
 			},
 			'validator' => function(array $opts, $app) {
 				return new \Bstage\Security\Validator(array_merge([
@@ -248,39 +241,7 @@ function bstage($name=null, $callback=null) {
 			},
 		], isset($opts['services']) ? $opts['services'] : []);
 		//create app
-		$app = new \Bstage\App\Kernel($opts);
-		//Event: add debug bar
-		$app->events->add('app.response', function($event) use($app) {
-			//is web scope?
-			if($scope = $app->meta('scope')) {
-				if($scope !== 'web') {
-					return;
-				}
-			}
-			//is html response?
-			if($event->response->getMediaType() !== 'html') {
-				return;
-			}
-			//get output
-			$output = $event->response->getContents();
-			//show debug vars?
-			if($app->meta('debug') && $event->request->getAttribute('primary')) {
-				//get queries
-				$queries = $app->db->getQueries();
-				//get debug bar
-				$debug = $app->errorHandler->debugBar($queries);
-				//add before </footer> or </body>
-				if(preg_match('/<\/(footer|body)>/i', $output)) {
-					$output = preg_replace('/<\/(footer|body)>/i', $debug. '</$1>', $output, 1);
-				} else {
-					$output .= "\n" . trim($debug);
-				}
-			}
-			//update response body
-			$event->response->withContents($output);
-		});
-		//cache app
-		$appCache[$name] = $app;
+		$appCache[$name] = new \Bstage\App\Kernel($opts);
 	}
 	//execute callback?
 	if($callback && is_callable($callback)) {

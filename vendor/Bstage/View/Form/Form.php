@@ -80,6 +80,10 @@ class Form {
 		return $this;
 	}
 
+	public function text($name, array $config=[]) {
+		return $this->input($name, array_merge([ 'type' => 'text' ], $config));
+	}
+
 	public function textarea($name, array $config=[]) {
 		return $this->input($name, array_merge([ 'type' => 'textarea' ], $config));
 	}
@@ -131,6 +135,7 @@ class Form {
 			return $this->isValid;
 		}
 		//form data
+		$fields = [];
 		$values = [];
 		$method = $this->attr['method'] === 'get' ? 'get' : 'post';
 		$global = $GLOBALS['_' . strtoupper($method)];
@@ -146,22 +151,24 @@ class Form {
 		if($modelId && $modelId != $formId) {
 			return null;
 		}
-		//fields matched?
+		//check fields match input
 		foreach($this->fields as $name => $opts) {
 			//is submit field?
 			if(isset($opts['type']) && $opts['type'] === 'submit') {
 				continue;
 			}
 			//does value exist?
-			if(!isset($global[$name])) {
+			if(!isset($global[$name]) && !is_int($name)) {
 				return null;
 			}
+			//add field
+			$fields[$name] = $opts;
 		}
 		//reset errors
 		$this->errors = [];
 		$this->input->getValidator()->reset();
 		//loop through fields
-		foreach($this->fields as $name => $opts) {
+		foreach($fields as $name => $opts) {
 			//is submit field?
 			if(isset($opts['type']) && $opts['type'] === 'submit') {
 				continue;
@@ -190,10 +197,6 @@ class Form {
 				'filter' => $filter,
 				'validate' => $validate,
 			]);
-			//make null?
-			if($values[$name] === '' && in_array('optional', $validate)) {
-				$values[$name] = null;
-			}
 		}
 		//set vars
 		$res = '';

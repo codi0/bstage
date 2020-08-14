@@ -25,18 +25,8 @@ class Container {
 	}
 
 	public function get($key) {
-		//dependency registered?
-		if(!isset($this->instances[$key])) {
-			throw new \Exception("Dependency $key not registered");
-		}
-		//dependency requires autowiring?
-		if($this->instances[$key] instanceof \Closure || is_string($this->instances[$key])) {
-			$this->instances[$key] = $this->autowire($key, $this->instances[$key]);
-		}
-		//set config object?
-		if(!$this->config && $key === 'config') {
-			$this->config = $this->instances[$key];
-		}
+		//create object
+		$this->instances[$key] = $this->create($key);
 		//return
 		return $this->instances[$key];
 	}
@@ -57,15 +47,35 @@ class Container {
 		return true;
 	}
 
-	protected function autowire($key, $entry) {
+	public function create($key, array $params=[]) {
+		//dependency registered?
+		if(!isset($this->instances[$key])) {
+			throw new \Exception("Dependency $key not registered");
+		}
+		//create object?
+		if(is_object($this->instances[$key])) {
+			$obj = $this->instances[$key];
+		} else {
+			$obj = $this->autowire($key, $this->instances[$key], $params);
+		}
+		//set config object?
+		if(!$this->config && $key === 'config') {
+			$this->config = $obj;
+		}
+		//return
+		return $obj;
+	}
+
+	protected function autowire($key, $entry, array $params=[]) {
 		//set vars
-		$params = [];
 		$isOpts = false;
 		//check config?
 		if($this->config) {
-			//get config params
+			//get config data
 			$confKey = str_replace('{key}', $key, $this->configKey);
-			$params = (array) $this->config->get($confKey, []);
+			$confData = (array) $this->config->get($confKey) ?: [];
+			//merge into params
+			$params = array_merge($confData, $params);
 			//options key found?
 			if(isset($params['opts']) && is_array($params['opts'])) {
 				$params = $params['opts'];

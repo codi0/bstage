@@ -7,7 +7,7 @@ namespace Bstage\Event;
 class Dispatcher {
 
 	protected $provider;
-	protected $context;
+	protected $app;
 
 	public function __construct(array $opts=array()) {
 		//set properties
@@ -46,7 +46,7 @@ class Dispatcher {
 		//loop through listeners
 		foreach($this->provider->getListenersForEvent($event) as $callback) {
 			//execute callback
-			call_user_func($callback, $event, $this->context);
+			call_user_func($callback, $event, $this->app);
 			//stop here?
 			if($event->isPropagationStopped()) {
 				break;

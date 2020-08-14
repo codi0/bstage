@@ -5,6 +5,7 @@ namespace Bstage\Debug;
 class ErrorHandler {
 
 	protected $debug = false;
+	protected $debugBar = true;
 	protected $handled = false;
 
 	protected $startTime = 0;
@@ -44,6 +45,10 @@ class ErrorHandler {
 		//start timer
 		$this->startTime = microtime(true);
 		$this->startMem = memory_get_usage();
+		//show debug bar?
+		if($this->debug && $this->debugBar && $this->events) {
+			$this->events->add('app.response', [ $this, 'debugBarEvent' ]);
+		}
 	}
 
 	public function setLogger($logger) {
@@ -236,7 +241,7 @@ class ErrorHandler {
 		$mem = number_format((memory_get_usage() - $this->startMem) / 1024, 0);
 		$peak = number_format(memory_get_peak_usage() / 1024, 0);
 		//debug data
-		$debug  = '<div id="debug" style="box-sizing:border-box; width:98%; font-size:12px; text-align:left; margin:10px auto; padding:10px; border:1px solid #ddd; border-radius:10px; background:#eee;">' . "\n";
+		$debug  = '<div id="debug-bar" style="width:100%; font-size:12px; text-align:left; padding:10px; margin-top:20px; background:#eee;">' . "\n";
 		$debug .= '<div style="margin-bottom:5px;"><b>Debug bar</b></div>' . "\n";
 		$debug .= '<div>Time: ' . $time . 's | Mem: ' . $mem . 'kb | Peak: ' . $peak . 'kb | Queries: ' . count($queries) . '</div>' . "\n";
 		//db queries?
@@ -251,6 +256,30 @@ class ErrorHandler {
 		$debug .= '</div>' . "\n";
 		//return
 		return $debug;
+	}
+
+	public function debugBarEvent($event, $app) {
+		//is html response?
+		if($event->response->getMediaType() !== 'html') {
+			return;
+		}
+		//get output
+		$output = $event->response->getContents();
+		//show debug vars?
+		if($event->request->getAttribute('primary')) {
+			//get queries
+			$queries = $app->db->getQueries();
+			//get debug bar
+			$debug = $this->debugBar($queries);
+			//add before </footer> or </body>
+			if(preg_match('/<\/(footer|body)>/i', $output)) {
+				$output = preg_replace('/<\/(footer|body)>/i', $debug. '</$1>', $output, 1);
+			} else {
+				$output .= "\n" . trim($debug);
+			}
+		}
+		//update response body
+		$event->response->withContents($output);
 	}
 
 	protected function getExLevel($e) {

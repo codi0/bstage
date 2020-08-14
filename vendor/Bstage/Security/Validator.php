@@ -228,6 +228,19 @@ class Validator {
 		return true;
 	}
 
+	protected function _ruleAlphanumeric($value, array $params, $isFilter) {
+		//filter input?
+		if($isFilter) {
+			return preg_replace('/[^a-z0-9]/i', '', $value);
+		}
+		//validation failed?
+		if(!preg_match('/^[a-z0-9]+$/i', $value)) {
+			return $this->addError(':label must only contain letters and numbers'); 
+		}
+		//passed
+		return true;
+	}
+
 	protected function _ruleBool($value, array $params, $isFilter) {
 		//filter input?
 		if($isFilter) {
@@ -363,15 +376,17 @@ class Validator {
 	}
 
 	protected function _ruleXss($value, array $params, $isFilter) {
-		//set vars
-		$unsafe = preg_match('/(onclick|onload|onerror|onmouse|onkey)|(script|alert|confirm)[\:\>\(]/iS', $value);
-		$filtered = filter_var(rawurldecode($value), FILTER_SANITIZE_STRING);
+		//decode input
+		$value = rawurldecode(rawurldecode($value));
+		//run unsafe check
+		$unsafe = preg_replace('/\s+/', '', $value); 
+		$unsafe = preg_match('/(onclick|onload|onerror|onmouse|onkey)|(script|alert|confirm)[\:\>\(]/iS', $unsafe);
 		//filter input?
 		if($isFilter) {
-			return $unsafe ? '' : $filtered;
+			return $unsafe ? '' : filter_var($value, FILTER_SANITIZE_STRING);
 		}
 		//validation failed?
-		if($filtered !== $value) {
+		if($value !== filter_var($value, FILTER_SANITIZE_STRING, FILTER_FLAG_NO_ENCODE_QUOTES)) {
 			return $this->addError(':label contains unsafe characters'); 
 		}
 		//passed

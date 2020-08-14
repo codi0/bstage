@@ -1,6 +1,6 @@
 <?php
 
-namespace Bstage\App\Composer;
+namespace Bstage\App;
 
 /**
  * Composer Dependency Manager

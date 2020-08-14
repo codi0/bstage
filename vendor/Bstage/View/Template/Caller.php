@@ -25,7 +25,7 @@ class Caller implements \ArrayAccess {
 	}
 
 	public function __toString() {
-		return $this->parseExpr('');
+		return (string) $this->parseExpr('');
 	}
 
 	public function __call($method, array $args=[]) {

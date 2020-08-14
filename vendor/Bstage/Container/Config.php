@@ -10,8 +10,8 @@ class Config {
 	protected $dataLocal = [];
 
 	protected $dir = '';
-	protected $fileNames = [];
 	protected $filePerms = 0640;
+	protected $fileNames = [ 'app' ];
 
 	protected $token = '.';
 	protected $readonly = false;
@@ -52,10 +52,11 @@ class Config {
 					}
 				} else if(is_object($data)) {
 					//call method?
-					if(substr($segment, -2) === '()') {
-						$segment = substr($segment, 0, -2);
+					if(preg_match('/^(\w+)\(([^\)]+)?\)$/', $segment, $match)) {
+						$segment = $match[1];
+						$params = isset($match[2]) ? array_map('trim', explode(',', $match[2])) : [];
 						if(is_callable([ $data, $segment ])) {
-							$res = $data->$segment();
+							$res = $data->$segment(...$params);
 						}
 					} else {
 						if(property_exists($data, $segment)) {
@@ -138,6 +139,24 @@ class Config {
 		return $this->set(null, $data, $save);
 	}
 
+	public function mergePath($path, $save=false) {
+		//is dir?
+		if(strpos($path, '.') === false) {
+			$path = rtrim($path, '/') . '/*.php';
+		}
+		//loop through files
+		foreach(glob($path) as $file) {
+			//get data
+			$data = include($file);
+			//merge data?
+			if($data && is_array($data)) {
+				$this->set(null, $data, $save);
+			}
+		}
+		//return
+		return true;
+	}
+
 	public function toArray() {
 		if($this->data && $this->dataLocal) {
 			return $this->arrayMergeRecursive($this->data, $this->dataLocal);
@@ -155,11 +174,11 @@ class Config {
 		if(!$this->dir) return;
 		//set vars
 		$coreData = $this->data;
-		$coreFile = $this->dir . '/core.php';
+		$coreFile = $this->dir . '/' . $this->fileNames[0] . '.php';
 		//loop through files
 		foreach($this->fileNames as $key) {
 			//non-core file?
-			if(isset($this->data[$key]) && $key !== 'core') {
+			if(isset($this->data[$key]) && $key !== $this->fileNames[0]) {
 				//remove from core
 				unset($coreData[$key]);
 				//build file path

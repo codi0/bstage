@@ -8,7 +8,9 @@ class Orm {
 	protected $app;
 	protected $validator;
 
-	protected $modelClass = '{vendor}\Model\{name}';
+	protected $modelClassFormat = '{vendor}\Model\{name}';
+	protected $mapperClassFormat = '{vendor}\Model\Mapper\{name}';
+
 	protected $mapperClass = 'Bstage\Orm\Mapper';
 	protected $collectionClass = 'Bstage\Orm\Collection';
 	protected $proxyClass = 'Bstage\Orm\Proxy';
@@ -68,8 +70,8 @@ class Orm {
 			'fields' => [],
 			'data' => [],
 			//class definition
-			'modelClass' => $this->modelClass,
-			'mapperClass' => '',
+			'modelClass' => $this->modelClassFormat,
+			'mapperClass' => $this->mapperClassFormat,
 			'collectionClass' => $this->collectionClass,
 			'proxyClass' => $this->proxyClass,
 			//load definitions
@@ -123,12 +125,20 @@ class Orm {
 		}
 		//merge defaults
 		$opts = array_merge($defaults, $opts);
+		//parse name
+		$exp = explode('@', $name, 2);
+		//set vendor?
+		if(isset($exp[1])) {
+			$name = $exp[1];
+			$opts['modelClass'] = str_replace('{vendor}', $exp[0], $opts['modelClass']);
+			$opts['mapperClass'] = str_replace('{vendor}', $exp[0], $opts['mapperClass']);
+		}
+		//get mapper class?
+		if(!$opts['mapperClass'] = $this->app->class($opts['mapperClass'], $name)) {
+			$opts['mapperClass'] = $this->mapperClass;
+		}
 		//use finder?
 		if($opts['finder'] || ($hasQuery && $opts['finder'] !== false)) {
-			//get mapper class?
-			if(!$opts['mapperClass']) {
-				$opts['mapperClass'] = $this->app->class('{vendor}\Model\Mapper\{name}', $name) ?: $this->mapperClass;
-			}
 			//get finder method
 			$mapperClass = $opts['mapperClass'];
 			$customFinder = $opts['finder'] && is_string($opts['finder']);
@@ -157,10 +167,6 @@ class Orm {
 		if(!$opts['modelClass'] = $this->app->class($opts['modelClass'], $name)) {
 			throw new \Exception("Model not found: $name");
 		}
-		//get mapper class?
-		if(!$opts['mapperClass']) {
-			$opts['mapperClass'] = $this->app->class('{vendor}\Model\Mapper\{name}', $name) ?: $this->mapperClass;
-		}
 		//get DB table?
 		if(!$opts['table']) {
 			//use mapper property?
@@ -172,10 +178,14 @@ class Orm {
 				$ref = new \ReflectionClass($opts['modelClass']);
 				//loop through parents
 				while($ref = $ref->getParentClass()) {
+					//get parent name
+					$tmp = $ref->getName();
 					//stop here?
-					if(!$ref->isInstantiable()) break;
+					if(!$ref->isInstantiable() || strpos($tmp, '\\Model\\') === false) {
+						break;
+					}
 					//set parent
-					$parent = $ref->getName();
+					$parent = $tmp;
 				}
 				//format parent?
 				if($parent) {
@@ -401,10 +411,27 @@ class Orm {
 		}
 		//create hash?
 		if(!empty($id)) {
-			$id = md5($type . $name . $collection . $lazy . serialize($id));
+			$id = md5($type . $name . $collection . $lazy . $this->serialize($id));
 		}
 		//return
 		return $id ?: null;
+	}
+
+	protected function serialize(array $data, $child=false) {
+		//loop through data
+		foreach($data as $k => $v) {
+			if(is_numeric($v)) {
+				$data[$k] = (string) $v;
+			} else if(is_array($v)) {
+				$data[$k] = $this->serialize($v, true);
+			}
+		}
+		//serialize?
+		if(!$child) {
+			$data = serialize($data);
+		}
+		//return
+		return $data;
 	}
 
 	protected function arrayMergeRecursive(array $arr1, array $arr2) {

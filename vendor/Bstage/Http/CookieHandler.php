@@ -5,7 +5,7 @@ namespace Bstage\Http;
 class CookieHandler {
 
 	protected $signKey = '';
-	protected $signToken = '.';
+	protected $signToken = '::';
 	protected $signHash = 'sha1';
 
 	protected $encryptKey = '';
@@ -46,10 +46,6 @@ class CookieHandler {
 		}
 		//set data
 		$data = $_COOKIE[$name];
-		//is encrypted?
-		if($opts['encrypted']) {
-			$data = $this->crypt->decrypt($data, $this->encryptKey);
-		}
 		//is signed?
 		if($opts['signed']) {
 			//split hash
@@ -64,8 +60,12 @@ class CookieHandler {
 				return $opts['default'];
 			}
 		}
+		//is encrypted?
+		if($opts['encrypted']) {
+			$data = $this->crypt->decrypt($data, $this->encryptKey);
+		}
 		//decode data?
-		if(($test = json_decode($data, true)) !== null) {
+		if(($test = @json_decode($data, true)) !== null) {
 			$data = $test;
 		}
 		//return
@@ -87,37 +87,41 @@ class CookieHandler {
 			'sign' => false,
 			'encrypt' => false,
 		), $opts);
+		//has data?
+		if($data !== '' && $data !== []) {
+			//encode data?
+			if(!is_string($data) && !is_numeric($data)) {
+				$data = json_encode($data);
+			}
+			//encrypt data?
+			if($opts['encrypt'] && $opts['expires'] != 1) {
+				$data = $this->crypt->encrypt($data, $this->encryptKey);
+			}
+			//sign data?
+			if($opts['sign'] && $opts['expires'] != 1) {
+				$data = $this->calcSignature($data) . $this->signToken . $data;
+			}
+		} else {
+			//delete cookie?
+			if(isset($_COOKIE[$name])) {
+				$opts['expires'] = -1;
+				unset($_COOKIE[$name]);
+			} else {
+				return true;
+			}
+		}
 		//set time?
-		if($opts['expires'] > 0) {
+		if($opts['expires'] > 0 && $opts['expires'] < time()) {
 			$opts['expires'] = time() + $opts['expires'];
-		} elseif($opts['expires'] < 0) {
+		} else if($opts['expires'] < 0) {
 			$opts['expires'] = 1;
-		}
-		//encode data?
-		if(!is_string($data) && !is_numeric($data)) {
-			$data = json_encode($data);
-		}
-		//sign data?
-		if($opts['sign'] && $opts['expires'] != 1) {
-			$data = $this->calcSignature($data) . $this->signToken . $data;
-		}
-		//encrypt data?
-		if($opts['encrypt'] && $opts['expires'] != 1) {
-			$data = $this->crypt->encrypt($data, $this->encryptKey);
 		}
 		//set cookie
 		return setcookie($name, $data, $opts['expires'], $opts['path'], $opts['domain'], $opts['secure'], $opts['httponly']);
 	}
 
 	public function delete($name, array $opts=array()) {
-		//delete global?
-		if(isset($_COOKIE[$name])) {
-			unset($_COOKIE[$name]);
-		}
-		//unset cookie
-		return $this->set($name, '', array_merge($opts, array(
-			'expires' => -1,
-		)));
+		return $this->set($name, '', $opts);
 	}
 
 	protected function calcSignature($data) {

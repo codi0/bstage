@@ -21,8 +21,9 @@ class Engine {
 	protected $callbacks = [];
 
 	protected $csrf;
-	protected $events;
 	protected $escaper;
+	protected $events;
+	protected $html;
 	protected $shortcodes;
 
 	public function __construct(array $opts=[]) {
@@ -343,48 +344,83 @@ class Engine {
 	}
 
 	protected function _asset($name, $tag=true) {
-		//set vars
-		$url = '';
+		//asset handler
+		$loadAsset = function($ext, $url, $file=null) {
+			if($ext === 'js') {
+				if($url) {
+					return '<script defer src="' . $url . '"></script>' . "\n";
+				}
+				if($file) {
+					$output  = '<script>' . "\n";
+					$output .= 'document.addEventListener("DOMContentLoaded", function() {' . "\n";
+					$output .= file_get_contents($file) . "\n";
+					$output .= '})' . "\n";
+					$output .= '</script>' . "\n";
+					return $output;
+				}
+			}
+			if($ext === 'css') {
+				if($url) {
+					return '<link rel="stylesheet" href="' . $url . '">' . "\n";
+				}
+				if($file) {
+					$output  = '<style>' . "\n";
+					$output .= file_get_contents($file) . "\n";
+					$output .= '</style>' . "\n";
+					return $output;
+				}
+			}
+			return null;
+		};
+		//get file extension
 		$ext = pathinfo($name, PATHINFO_EXTENSION);
-		//loop through paths
+		//is absolute url?
+		if(strpos($name, '//') !== false) {
+			return $tag ? $loadAsset($ext, $name) : $name;
+		}
+ 		//loop through file paths
 		foreach($this->paths as $path) {
-			//build file path
-			$filePath = $path . '/' . $name;
+			//set vars
+			$url = '';
+			$file = $path . '/' . $name;
 			//file exists?
-			if(is_file($filePath)) {
+			if(is_file($file)) {
 				//build url?
-				if($tmp = $this->call('url', [ $filePath ])) {
-					$time = filemtime($filePath);
+				if($tmp = $this->call('url', [ $file ])) {
+					$time = filemtime($file);
 					$url = $tmp . ($time ? '?' . $time : '');
+					$res = $url;
 				}
-				//script?
-				if($tag && $ext === 'js') {
-					if($url) {
-						$url = '<script defer src="' . $url . '"></script>' . "\n";
-					} else {
-						$url  = '<script>' . "\n";
-						$url .= 'document.addEventListener("DOMContentLoaded", function() {' . "\n";
-						$url .= file_get_contents($filePath) . "\n";
-						$url .= '})' . "\n";
-						$utl .= '</script>' . "\n";
-					}
+				//load tag?
+				if($tag && in_array($ext, [ 'js', 'css' ])) {
+					return $loadAsset($ext, $url, $file);
 				}
-				//style?
-				if($tag && $ext === 'css') {
-					if($url) {
-						$url = '<link rel="stylesheet" href="' . $url . '">' . "\n";
-					} else {
-						$url  = '<style>' . "\n";
-						$url .= file_get_contents($filePath) . "\n";
-						$url .= '</style>' . "\n";
-					}
+				//return url?
+				if($url) {
+					return $url;
 				}
-				//stop
-				break;
 			}
 		}
+		//not found
+		return null;
+	}
+
+	protected function _html($tag, $val) {
+		$args = func_get_args();
+		$tag = array_shift($args);
+		return $this->html->$tag(...$args);	
+	}
+
+	protected function _paragraphs($value) {
+		//set vars
+		$paras = [];
+		$value = preg_split("/\n+/", str_replace("\r\n", "\n", $value));
+		//loop through paragraphs
+		foreach($value as $v) {
+			$paras[] = '<p>' . $this->_esc($v, 'html') . '</p>';
+		}
 		//return
-		return $url;
+		return implode("\n", $paras);
 	}
 
 	protected function _ellipsis($value, $length) {

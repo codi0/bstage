@@ -47,7 +47,9 @@ abstract class AbstractDb {
 		}
 		//use default builder?
 		if(!$this->builder) {
-			$this->builder = new \Bstage\Db\Builder\Mysql;
+			$this->builder = new \Bstage\Db\Builder\Mysql([
+				'prefix' => $this->prefix,
+			]);
 		}
 	}
 
@@ -113,16 +115,7 @@ abstract class AbstractDb {
 	abstract public function close();
 
 	public function escape($str) {
-		//escape string
-		return strtr($str, array(
-			"\x00" => '\x00',
-			"\n" => '\n',
-			"\r" => '\r',
-			"\\" => '\\\\',
-			"'" => "\'",
-			'"' => '\"',
-			"\x1a" => '\x1a'
-		));
+		return $this->builder->escape($str);
 	}
 
 	public function insertId() {
@@ -165,8 +158,6 @@ abstract class AbstractDb {
 	}
 
 	public function insert($table, array $values) {
-		//set vars
-		$table = $this->formatTable($table);
 		//build sql
 		$builder = $this->builder->query('insert', $table, [
 			'fields' => $values,
@@ -181,7 +172,6 @@ abstract class AbstractDb {
 
 	public function update($table, array $set, array $where=[]) {
 		//set vars
-		$table = $this->formatTable($table);
 		$opts = isset($set['fields']) ? $set : [ 'fields' => $set ];
 		//add where?
 		if($where) {
@@ -198,8 +188,6 @@ abstract class AbstractDb {
 	}
 
 	public function delete($table, array $opts=[]) {
-		//set vars
-		$table = $this->formatTable($table);
 		//build sql
 		$builder = $this->builder->query('delete', $table, $opts);
 		//valid query?
@@ -233,22 +221,8 @@ abstract class AbstractDb {
 		return true;
 	}
 
-	protected function formatTable($sql) {
-		//set vars
-		$prefix = $this->prefix;
-		$sql = str_replace('{prefix}', $this->prefix, $sql);
-		//replace variable placeholders
-		$sql = preg_replace_callback('/{([^}|\s]+)}/', function($match) use($prefix) {
-			return $prefix ? ($prefix . $match[1]) : $match[1];
-		}, $sql);
-		//add prefix manually?
-		if($prefix && strpos($sql, ' ') === false && strpos($sql, '.') === false) {
-			if(strpos($sql, $prefix) !== 0) {
-				$sql = $prefix . $sql;
-			}
-		}
-		//return
-		return trim($sql);
+	protected function formatTable($table) {
+		return $this->builder->table($table);
 	}
 
 	protected function formatParams(array $params) {

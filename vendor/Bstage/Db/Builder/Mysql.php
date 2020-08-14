@@ -4,6 +4,17 @@ namespace Bstage\Db\Builder;
 
 class MySql {
 
+	protected $prefix;
+
+	public function __construct(array $opts=[]) {
+		//loop through opts
+		foreach($opts as $k => $v) {
+			if(property_exists($this, $k)) {
+				$this->$k = $v;
+			}
+		}
+	}
+
 	public function query($type, $table, array $opts) {
 		//set vars
 		$sql = [];
@@ -32,6 +43,8 @@ class MySql {
 				$opts['where'][$k] = $v;
 			}
 		}
+		//format table
+		$opts['table'] = $this->table($opts['table']);
 		//get table alias
 		$exp = explode(' ', $opts['table']);
 		$alias = isset($exp[1]) ? $exp[1] : ($opts['join'] ? $opts['table'] : '');
@@ -157,6 +170,24 @@ class MySql {
 		return implode(', ', $fields);
 	}
 
+	public function table($sql) {
+		//set vars
+		$prefix = $this->prefix;
+		$sql = str_replace('{prefix}', $this->prefix, $sql);
+		//replace variable placeholders
+		$sql = preg_replace_callback('/{([^}|\s]+)}/', function($match) use($prefix) {
+			return $prefix ? ($prefix . $match[1]) : $match[1];
+		}, $sql);
+		//add prefix manually?
+		if($prefix && strpos($sql, ' ') === false && strpos($sql, '.') === false) {
+			if(strpos($sql, $prefix) !== 0) {
+				$sql = $prefix . $sql;
+			}
+		}
+		//return
+		return trim($sql);
+	}
+
 	public function join($joins, $table) {
 		//set vars
 		$sql = [];
@@ -180,6 +211,8 @@ class MySql {
 			], $join);
 			//add join?
 			if($join['table']) {
+				//format table
+				$join['table'] = $this->table($join['table']);
 				//join table
 				$tmp = strtoupper($join['type']) . ' JOIN ' . $join['table'];
 				//use on?

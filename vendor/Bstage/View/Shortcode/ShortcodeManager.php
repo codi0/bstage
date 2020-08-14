@@ -32,7 +32,7 @@ class ShortcodeManager {
 			if($exception) {
 				throw new \Exception("Shortcode class not found: $name");
 			} else {
-				return '';
+				return null;
 			}
 		}
 		//execute callback
@@ -79,7 +79,9 @@ class ShortcodeManager {
 				}
 			}
 			//get output
-			return $sm->get($name, $attr, false);
+			$output = $sm->get($name, $attr, false);
+			//return
+			return ($output !== null) ? $output : $parts[0];
 		}, $output);
 	}
 

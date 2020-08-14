@@ -64,6 +64,7 @@ class Mapper {
 				'onSave' => null, //filter value before saving into database
 				//relation actions
 				'relation' => '', //hasOne, hasMany, belongsTo, manyMany
+				'bridge' => '', //table used to bridge manyMany relations
 				'fk' => '', //foreign key database column name
 				'lk' => '', //local key database column name
 				'model' => $prop, //name of related model
@@ -486,13 +487,24 @@ class Mapper {
 			$with = isset($this->with[$prop]) ? $this->with[$prop] : [];
 			//run query?
 			if(is_scalar($val)) {
+				//add where
 				$relQuery = [
 					'where' => [
 						$meta['lk'] => $val,
-					],
+					]
 				];
 			} else if($val) {
 				$relData = $this->extractSelf($prop, $val);
+			}
+			//add bridge table?
+			if($meta['relation'] === 'manyMany') {
+				$relQuery['join'] = [
+					'table' => $meta['bridge'],
+					'on' => [
+						'local' => $meta['lk'],
+						'foreign' => $meta['fk'],
+					]
+				];
 			}
 			//get relation
 			$val = $this->orm->get($meta['model'], $this->arrayMergeRecursive([

@@ -48,6 +48,9 @@ class RequestHandler {
 		if(is_callable($middleware)) {
 			return call_user_func($middleware, $request, $this);
 		}
+		if(is_string($middleware)) {
+			$middleware = new $middleware;
+		}
 		return $middleware->process($request, $this);
 	}
 

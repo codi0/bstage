@@ -82,20 +82,29 @@ class Html {
 		], $opts);
 		//set vars
 		$html = '';
+		$value = (string) $value;
 		//loop through options
-		foreach($opts['options'] as $k => $v) {
-			//is array?
-			if(count($opts) > 1) {
-				$n = $name . '[' . $k . ']';
-				$checked = (isset($value[$k]) && $value[$k]) || $value === $k ? ' checked' : '';
+		foreach($opts['options'] as $key => $label) {
+			//set name
+			$n = $name;
+			$id = $name . '-' . $key;
+			//set value
+			if($opts['type'] === 'radio') {
+				$v = (string) $key;
 			} else {
-				$n = $name;
-				$checked = ($value === $n || $value == 1) ? ' checked' : '';
+				$v = '1';
+			}
+			//is array?
+			if(count($opts) > 1 && $opts['type'] !== 'radio') {
+				$n .= '[' . $key . ']';
+				$checked = ((isset($value[$key]) && $value[$key]) || $value === $key) ? ' checked' : '';
+			} else {
+				$checked = ($value === $n || $value === $v) ? ' checked' : '';
 			}
 			//add html
-			$html .= '<span>';
-			$html .= '<input type="' . $opts['type'] . '" name="' . $n . '" value="1"' . $checked . '>';
-			$html .= ucfirst($v);
+			$html .= '<span class="' . $opts['type'] . '-wrap">';
+			$html .= '<input type="' . $opts['type'] . '" name="' . $n . '" value="' . $v . '" id="' . $id . '"' . $checked . '>';
+			$html .= '<label for="' . $id . '">' . ucfirst($label) . '</label>';
 			$html .= '</span>' . "\n";
 		}
 		//return
@@ -115,6 +124,11 @@ class Html {
 			'name' => $name,
 			'options' => [],
 		], $opts);
+		//set default value?
+		if($value === '' || $value === null) {
+			$value = array_keys($opts['options']);
+			$value = $value ? $value[0] : '';
+		}
 		//open select
 		$html = '<select' . $this->formatAttr($opts) . '>' . "\n";
 		//loop through options
@@ -163,7 +177,7 @@ class Html {
 				$k = substr($k, 0, -1);
 			}
 			//is active?
-			if(($exact && $k == $value) || (!$exact && strpos($value, $k) === 0)) {
+			if(($exact && $k == $value) || (!$exact && strpos($value, $k) !== false)) {
 				$classes[] = 'active';
 			}
 			//create attribute

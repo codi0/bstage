@@ -39,7 +39,7 @@ class Factory {
 			//loop through classes
 			foreach($this->classFormats as $key => $val) {
 				//format class name
-				$class = str_replace('{name}', $name, $val);
+				$class = str_replace('{name}', ucfirst($name), $val);
 				//stop here?
 				if($key == $count || class_exists($class)) {
 					break;
