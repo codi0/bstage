@@ -9,6 +9,7 @@ class FormFactory {
 	protected $orm;
 	protected $html;
 	protected $input;
+	protected $events;
 
 	public function __construct(array $opts=[]) {
 		//set properties
@@ -40,6 +41,7 @@ class FormFactory {
 			$opts['orm'] = $this->orm;
 			$opts['html'] = $this->html;
 			$opts['input'] = $this->input;
+			$opts['events'] = $this->events;
 			//create form
 			$this->cache[$name] = new Form($name, $opts);
 		}

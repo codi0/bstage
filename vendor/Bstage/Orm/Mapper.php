@@ -65,8 +65,8 @@ class Mapper {
 				//relation actions
 				'relation' => '', //hasOne, hasMany, belongsTo, manyMany
 				'bridge' => '', //table used to bridge manyMany relations
-				'fk' => '', //foreign key database column name
 				'lk' => '', //local key database column name
+				'fk' => '', //foreign key database column name
 				'model' => $prop, //name of related model
 				'cascade' => [], //whether relation should be saved on insert, update and delete
 				'eager' => [], //whether to eager load relations with model
@@ -77,26 +77,37 @@ class Mapper {
 				//no column
 				$this->fields[$prop]['column'] = '';
 				$this->fields[$prop]['save'] = false;
-				//guess foreign key?
-				if(!$this->fields[$prop]['fk']) {
-					if($rel === 'belongsTo') {
-						$this->fields[$prop]['fk'] = $this->underscore($prop) . '_id';
-					} else {
-						$this->fields[$prop]['fk'] = 'id';
-					}
-				}
 				//guess local key?
 				if(!$this->fields[$prop]['lk']) {
 					if($rel === 'belongsTo') {
-						$this->fields[$prop]['lk'] = 'id';
+						$this->fields[$prop]['lk'] = $this->underscore($prop) . '_id';
 					} else {
-						$this->fields[$prop]['lk'] = $shortName . '_id';
+						$this->fields[$prop]['lk'] = 'id';
+					}
+				}
+				//guess foreign key?
+				if(!$this->fields[$prop]['fk']) {
+					if($rel === 'belongsTo') {
+						$this->fields[$prop]['fk'] = 'id';
+					} else {
+						$this->fields[$prop]['fk'] = $shortName . '_id';
+					}
+				}
+				//is many many?
+				if($rel === 'manyMany') {
+					//local key to array?
+					if(!is_array($this->fields[$prop]['lk'])) {
+						$this->fields[$prop]['lk'] = [ $this->fields[$prop]['lk'], 'id' ];
+					}
+					//foreign key to array?
+					if(!is_array($this->fields[$prop]['fk'])) {
+						$this->fields[$prop]['fk'] = [ $this->fields[$prop]['fk'], 'id' ];
 					}
 				}
 			} else {
 				//no keys
-				$this->fields[$prop]['fk'] = '';
 				$this->fields[$prop]['lk'] = '';
+				$this->fields[$prop]['fk'] = '';
 				//guess column name?
 				if(!$this->fields[$prop]['column']) {
 					$this->fields[$prop]['column'] = $this->underscore($prop);
@@ -112,8 +123,7 @@ class Mapper {
 	public function name($short=false) {
 		//short name?
 		if($short) {
-			$name = preg_split('/(?=[A-Z])/',$this->name);
-			return strtolower($name[count($name)-1]);
+			return $this->getSegment($this->name, true);
 		}
 		//full name
 		return $this->name;
@@ -281,7 +291,8 @@ class Mapper {
 			//skip field?
 			if(!$meta) continue;
 			//get DB column
-			$col = $meta['fk'] ?: $meta['column'];
+			$col = $meta['lk'] ?: $meta['column'];
+			$col = is_array($col) ? $col[1] : $col;
 			//get state value
 			$stateVal = isset($this->data[$col]) ? $this->data[$col] : null;
 			//mark as allowed?
@@ -461,7 +472,8 @@ class Mapper {
 					continue;
 				}
 				//get value
-				$val = isset($this->data[$meta['fk']]) ? $this->data[$meta['fk']] : null;
+				$key = is_array($meta['lk']) ? $meta['lk'][1] : $meta['lk'];
+				$val = isset($this->data[$key]) ? $this->data[$key] : null;
 				//create relation
 				$this->relations[$prop] = $this->formatRelation($prop, $val, true);
 			}
@@ -487,10 +499,12 @@ class Mapper {
 			$with = isset($this->with[$prop]) ? $this->with[$prop] : [];
 			//run query?
 			if(is_scalar($val)) {
+				//get key
+				$key = is_array($meta['fk']) ? '{' . $this->name . '}.' . $meta['lk'][1] : $meta['fk'];
 				//add where
 				$relQuery = [
 					'where' => [
-						$meta['lk'] => $val,
+						$key => $val,
 					]
 				];
 			} else if($val) {
@@ -499,11 +513,20 @@ class Mapper {
 			//add bridge table?
 			if($meta['relation'] === 'manyMany') {
 				$relQuery['join'] = [
-					'table' => $meta['bridge'],
-					'on' => [
-						'local' => $meta['lk'],
-						'foreign' => $meta['fk'],
-					]
+					[
+						'table' => $meta['bridge'],
+						'on' => [
+							'local' => '{' . $meta['model'] . '}.' . $meta['lk'][1],
+							'foreign' => '{' . $meta['bridge'] . '}.' . $meta['lk'][0],
+						],
+					],
+					[
+						'table' => $this->name,
+						'on' => [
+							'local' => '{' . $this->name . '}.' . $meta['fk'][1],
+							'foreign' => '{' . $meta['bridge'] . '}.' . $meta['fk'][0],
+						],
+					],
 				];
 			}
 			//get relation
@@ -632,6 +655,15 @@ class Mapper {
 		}
 		//return
 		return call_user_func($callback, $value, $this);
+	}
+
+	protected function getSegment($name, $last=true) {
+		if(strpos($name, '_',) !== false) {
+			$name = explode('_', $name);
+		} else {
+			$name = preg_split('/(?=[A-Z])/', $name);
+		}
+		return strtolower($name[$last ? count($name)-1 : 0]);
 	}
 
 	protected function arrayMergeRecursive(array $arr1, array $arr2) {

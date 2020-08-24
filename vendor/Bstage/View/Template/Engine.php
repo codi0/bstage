@@ -153,14 +153,6 @@ class Engine {
 		$this->loadTemplate($template);
 		//get output
 		$output = trim(ob_get_clean());
-		//replace shortcodes?
-		if($this->shortcodes) {
-			$output = $this->shortcodes->injectHtml($output);
-		}
-		//csrf protection?
-		if($this->csrf) {
-			$output = $this->csrf->injectHtml($output);
-		}
 		//template event?
 		if($this->events) {
 			//EVENT: template.head and template.footer
@@ -177,12 +169,26 @@ class Engine {
 			//EVENT: template.output
 			$event = $this->events->dispatch('template.output', [
 				'output' => $output,
+				'page' => $template,
 			]);
 			//update output
 			$output = $event->output;
 		}
-		//reset flag
+		//reset vars
+		$tpl = $this;
 		$this->curTemplate = '';
+		//replace shortcodes?
+		if($this->shortcodes) {
+			$output = $this->shortcodes->injectHtml($output);
+		}
+		//replace escaped variables
+		$output = preg_replace_callback('/{{(.*)}}/U', function($parts) use($tpl) {
+			return $tpl->caller->expr($parts[1], true);
+		}, $output);
+		//csrf protection?
+		if($this->csrf) {
+			$output = $this->csrf->injectHtml($output);
+		}
 		//return?
 		if($asStr) {
 			return $output;

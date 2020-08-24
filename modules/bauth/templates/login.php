@@ -8,10 +8,10 @@
 
 	<div class="links">
 		<div class="register">
-			<a href="register">Create a new account</a>
+			<a href="<?= $tpl->url('register', $_GET) ?>">Create a new account</a>
 		</div>
 		<div class="forgot">
-			<a href="forgot">I forgot my password</a>
+			<a href="<?= $tpl->url('forgot', $_GET) ?>">I forgot my password</a>
 		</div>
 	</div>
 

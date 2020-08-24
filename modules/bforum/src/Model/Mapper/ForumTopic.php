@@ -24,7 +24,6 @@ class ForumTopic extends \Bstage\Orm\Mapper {
 		'category' => [
 			'relation' => 'belongsTo',
 			'model' => 'forumCategory',
-			'column' => 'category_id',
 			'lazy' => true,
 		],
 		'messages' => [

@@ -6,7 +6,7 @@
 
 	<div class="links">
 		<div class="login">
-			<a href="login">I already have an account</a>
+			<a href="<?= $tpl->url('login', $_GET) ?>">I already have an account</a>
 		</div>
 	</div>
 

@@ -24,7 +24,9 @@ class ResetPwd {
 				}
 				//redirect to login
 				$app->redirect('login', [
-					'msg' => 'Your password has been successfully updated.',
+					'query' => [
+						'msg' => 'Your password has been successfully updated.',
+					],
 				]);
 			},
 		]);

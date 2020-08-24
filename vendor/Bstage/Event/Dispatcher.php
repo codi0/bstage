@@ -45,8 +45,16 @@ class Dispatcher {
 		}
 		//loop through listeners
 		foreach($this->provider->getListenersForEvent($event) as $callback) {
-			//execute callback
-			call_user_func($callback, $event, $this->app);
+			//create object?
+			if(!is_callable($callback) && is_string($callback)) {
+				$callback = new $callback;
+			}
+			//object or callback?
+			if(is_callable($callback)) {
+				call_user_func($callback, $event, $this->app);
+			} else {
+				$callback->process($event, $this->app);
+			}
 			//stop here?
 			if($event->isPropagationStopped()) {
 				break;

@@ -12,7 +12,7 @@
 
 	<div class="links">
 		<div class="account">
-			<a href="account">Go to my account</a>
+			<a href="<?= $tpl->url('account') ?>">Go to my account</a>
 		</div>
 	</div>
 

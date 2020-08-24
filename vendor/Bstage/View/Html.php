@@ -80,9 +80,10 @@ class Html {
 			'type' => 'checkbox',
 			'options' => [ $name ],
 		], $opts);
-		//set vars
-		$html = '';
+		//format value
 		$value = (string) $value;
+		//open html
+		$html = '<span class="' . $opts['type'] . '-group">';
 		//loop through options
 		foreach($opts['options'] as $key => $label) {
 			//set name
@@ -107,6 +108,8 @@ class Html {
 			$html .= '<label for="' . $id . '">' . ucfirst($label) . '</label>';
 			$html .= '</span>' . "\n";
 		}
+		//close html
+		$html .= '</span>' . "\n";
 		//return
 		return $html;
 	}

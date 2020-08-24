@@ -21,7 +21,9 @@ class Register {
 				//get url
 				$url = $app->input('redirect', 'GET') ?: 'account';
 				//redirect user
-				$app->redirect($url);
+				$app->redirect($url, [
+					'query' => $_GET,
+				]);
 			},
 		]);
 		//add core fields

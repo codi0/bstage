@@ -23,6 +23,7 @@ class Form {
 	protected $orm;
 	protected $html;
 	protected $input;
+	protected $events;
 
 	public function __construct($name, $method='post', $action='', array $opts=[]) {
 		//method is array?
@@ -60,6 +61,10 @@ class Form {
 
 	public function __toString() {
 		return $this->render();
+	}
+
+	public function getName() {
+		return $this->name;
 	}
 
 	public function attr($key, $val=null) {
@@ -197,6 +202,10 @@ class Form {
 				'filter' => $filter,
 				'validate' => $validate,
 			]);
+			//skip empty?
+			if($values[$name] === '' && in_array('skipEmpty', $validate)) {
+				$values[$name] = null;
+			}
 		}
 		//set vars
 		$res = '';
@@ -225,6 +234,13 @@ class Form {
 				if($res === false || $this->errors) {
 					$this->isValid = false;
 				}
+			}
+			//dispatch event?
+			if($this->events && $this->isValid) {
+				$this->events->dispatch('form.success', [
+					'name' => $this->name,
+					'form' => $this,
+				]);
 			}
 		} else {
 			//error callback?

@@ -16,7 +16,7 @@ class EditProfile {
 		//add fields
 		$form->input('username', [ 'validate' => "unique(user.username,id!=$user->id)" ]);
 		$form->input('email', [ 'validate' => "unique(user.email,id!=$user->id)" ]);
-		$form->password('password', [ 'value' => '', 'validate' => 'optional|length(8,30)', 'override' => true ]);
+		$form->password('password', [ 'value' => '', 'validate' => 'optional|skipEmpty|length(8,30)', 'override' => true ]);
 		$form->password('password_confirm', [ 'value' => '', 'validate' => 'equals(POST.password)' ]);
 		$form = $this->customFields($form);
 		$form->submit('Submit');

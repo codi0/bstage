@@ -19,7 +19,9 @@ class Login {
 				//get url
 				$url = $app->input('redirect', 'GET') ?: 'account';
 				//redirect user
-				$app->redirect($url, $_GET);
+				$app->redirect($url, [
+					'query' => $_GET,
+				]);
 			},
 		]);
 		//add form fields

@@ -12,12 +12,16 @@ class AuthWeb extends \Bstage\Http\Middleware\AbstractMiddleware {
 		//redirect to login?
 		if(!$app->auth->id() && $route->getPrefix()) {
 			$app->redirect('login', [
-				'redirect' => trim($uri->getPathInfo(), '/') . ($_GET ? '?' . http_build_query($_GET) : ''),
+				'query' => [
+					'redirect' => trim($uri->getPathInfo(), '/') . ($_GET ? '?' . http_build_query($_GET) : ''),
+				],
 			]);
 		}
 		//redirect to account?
 		if($app->auth->id() && in_array($route->getName(), [ 'login', 'register', 'forgot', 'reset' ])) {
-			$app->redirect('account', $_GET);
+			$app->redirect('account', [
+				'query' => $_GET,
+			]);
 		}
 		//return (before)
 		return $next($request);

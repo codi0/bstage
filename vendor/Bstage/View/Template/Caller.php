@@ -25,7 +25,7 @@ class Caller implements \ArrayAccess {
 	}
 
 	public function __toString() {
-		return (string) $this->parseExpr('');
+		return (string) $this->expr('');
 	}
 
 	public function __call($method, array $args=[]) {
@@ -37,7 +37,7 @@ class Caller implements \ArrayAccess {
 	}
 
     public function offsetGet($key) {
-		return $this->parseExpr($key);
+		return $this->expr($key);
 	}
 
 	public function offsetSet($key, $val) {
@@ -48,14 +48,14 @@ class Caller implements \ArrayAccess {
 		throw new \Exception("Template data is read only");
 	}
 
-	protected function parseExpr($key) {
+	public function expr($key, $keyAsVal=false) {
 		//set vars
 		$tpl = $this;
 		$val = null;
 		$escaped = false;
 		//format key
 		$key = preg_replace_callback('/\$([a-z0-9\-\_\.]+)/i', function($match) use($tpl) {
-			return $tpl->parseExpr($match[1]);
+			return $tpl->expr($match[1]);
 		}, $key);
 		//parse callbacks
 		$callbacks = array_map('trim', explode('|', $key));
@@ -76,6 +76,10 @@ class Caller implements \ArrayAccess {
 			//check data store
 			$key = array_shift($callbacks);
 			$val = $this->engine->getData(trim($this->prefix . $key, '.'), '');
+		}
+		//key as value?
+		if($keyAsVal) {
+			$val = $key;
 		}
 		//actions to array?
 		if(is_string($callbacks)) {

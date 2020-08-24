@@ -6,7 +6,7 @@
 
 	<div class="links">
 		<div class="login">
-			<a href="login">Back to sign in</a>
+			<a href="<?= $tpl->url('login', $_GET) ?>">Back to sign in</a>
 		</div>
 	</div>
 

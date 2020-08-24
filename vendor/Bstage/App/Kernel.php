@@ -388,12 +388,12 @@ class Kernel {
 		}
 		//create absolute url?
 		if(!isset($parts['host']) || !$parts['host']) {
-			if($url && $url[0] === '/') {
-				$url = trim($this->meta['host'], '/') . '/' . trim($url, '/');
-			} else {
+			//if($url && $url[0] === '/') {
+			//	$url = trim($this->meta['host'], '/') . '/' . trim($url, '/');
+			//} else {
 				$isFile = strpos($url, '.') !== false;
 				$url = trim($this->meta[$isFile ? 'base_url_org' : 'base_url'], '/') . '/' . trim($url, '/');
-			}
+			//}
 		}
 		//merge query parts?
 		if(isset($parts['query']) && $parts['query']) {
@@ -414,24 +414,28 @@ class Kernel {
 		return filter_var($url, FILTER_SANITIZE_URL);
 	}
 
-	public function redirect($url, array $query=[], $merge=false) {
+	public function redirect($url, array $opts=[]) {
+		//set opts
+		$opts = array_merge([
+			'query' => [],
+			'merge' => false,
+			'remote' => false,
+		], $opts);
 		//merge $_GET?
-		if($merge && $_GET) {
-			$query = array_merge($_GET, $query);
+		if($opts['merge'] && $_GET) {
+			$opts['query'] = array_merge($_GET, $opts['query']);
 		}
 		//remove redirect param?
-		if($url !== 'login' && isset($query['redirect'])) {
-			unset($query['redirect']);
+		if($url !== 'login' && isset($opts['query']['redirect'])) {
+			unset($opts['query']['redirect']);
 		}
 		//generate url
-		$url = $this->url($url, $query);
+		$url = $this->url($url, $opts['query']);
 		//valid host?
-		if(strpos($url, $this->meta['host']) !== 0) {
-			$url = $this->url(null);
+		if($opts['remote'] || strpos($url, $this->meta['host']) === 0) {
+			header('Location: ' . $url);
+			exit();
 		}
-		//send header
-		header('Location: ' . $url);
-		exit();
 	}
 
 	public function secret($name, array $opts=[]) {

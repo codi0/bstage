@@ -115,6 +115,7 @@ function bstage($name=null, $callback=null) {
 					'html' => $app->html,
 					'input' => $app->input,
 					'orm' => $app->orm,
+					'events' => $app->events,
 				], $opts));
 			},
 			'html' => function(array $opts, $app) {
