@@ -160,8 +160,8 @@ class Html {
 		//open nav
 		$html = '<nav id="' . $name . '">' . "\n";
 		//add toggle
-		$html .= '<div class="toggle">' . "\n";
-		$html .= '<i onclick="document.getElementById(\'' . $name . '\').classList.toggle(\'open\');"></i>' . "\n";
+		$html .= '<div class="icons">' . "\n";
+		$html .= '<i class="toggle" onclick="this.parentNode.parentNode.classList.toggle(\'open\');"></i>' . "\n";
 		$html .= '</div>' . "\n";
 		//open menu
 		$html .= '<div class="menu">' . "\n";

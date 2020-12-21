@@ -55,6 +55,28 @@ class Node {
 	}
 
     /**
+     * Has matching nodes
+     *
+     * @return boolean
+     */
+	public function has() {
+		//set vars
+		$found = false;
+		//loop through matches
+		foreach($this->initNode() as $nodes) {
+			//loop through nodes
+			foreach($this->prepNodes($nodes) as $old) {
+				if(!empty($old)) {
+					$found = true;
+					break 2;
+				}
+			}
+		}
+		//return
+		return $found;
+	}
+
+    /**
      * Return matching nodes
      *
      * @param  boolean $first
@@ -682,10 +704,12 @@ class Node {
 		$dom = new \DOMDocument('1.0', $this->charset);
 		//get load method
 		$method = $this->isHtml ? 'loadHTML' : 'loadXML';
-		//load to dom
-		libxml_use_internal_errors(true);
-		$dom->$method($data);
-		libxml_clear_errors();
+		//load to dom?
+		if(strlen($data) > 0) {
+			libxml_use_internal_errors(true);
+			$dom->$method($data);
+			libxml_clear_errors();
+		}
 		//remove cdata?
 		if(stripos($data, '<script') !== false && stripos($data, '<![CDATA') === false) {
 			$this->removeCdata($dom);
@@ -726,18 +750,28 @@ class Node {
 				//array
 				$res += $this->$method($d);
 			} elseif(is_string($d)) {
-				//load dom
-				$tmp = $this->createDom($d);
-				//search nodes
-				foreach(array( 'body', 'head', 'html' ) as $el) {
-					//match found?
-					if($nodes = $tmp->getElementsByTagName($el)->item(0)) {
-						break;
+				//is raw text?
+				if($d && strip_tags($d) === $d) {
+					//create text node
+					$res[] = $dom->createTextNode($d);
+				} else {
+					//load dom
+					$nodes = null;
+					$tmp = $this->createDom($d);
+					//search nodes
+					foreach(array( 'body', 'head', 'html' ) as $el) {
+						//match found?
+						if($nodes = $tmp->getElementsByTagName($el)->item(0)) {
+							break;
+						}
 					}
-				}
-				//import nodes
-				foreach($nodes->childNodes as $node) {
-					$res[] = $dom->importNode($node, true);
+					//import nodes?
+					if($nodes && $nodes->childNodes) {
+						//loop through children
+						foreach($nodes->childNodes as $node) {
+							$res[] = $dom->importNode($node, true);
+						}
+					}
 				}
 			}
 		}

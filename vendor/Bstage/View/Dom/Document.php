@@ -133,8 +133,12 @@ class Document extends Node {
 	public function select($selector) {
 		//reset node
 		$this->node = null;
+		//load class?
+		if(!class_exists('bkdotcom\CssXpath', false)) {
+			require_once(__DIR__ . '/bkdotcom/CssXpath.php');
+		}
 		//translate to xpath
-		$query = $this->css2xpath($selector);
+		$query = \bkdotcom\CssXpath::cssToXpath($selector);
 		//run query
 		return $this->query($query);
 	}
@@ -216,22 +220,22 @@ class Document extends Node {
 				//select option
 				if(!$m[3] || $m[3] == "*") {
 					//attribute exists (wildcard)
-					array_push($parts, "[@" . $m[1] . "]");
+					array_push($parts, "*[@" . $m[1] . "]");
 				} elseif($m[2] == '*') {
 					//attribute contains value
-					array_push($parts, "[contains(@" . $m[1] . ", '" . $m[3] . "')]");
+					array_push($parts, "*[contains(@" . $m[1] . ", '" . $m[3] . "')]");
 				} elseif($m[2] == "~") {
 					//attribute contains value, in multiple values
-					array_push($parts, "[@" . $m[1] . " and contains(concat(' ',normalize-space(@" . $m[1] . "),' '),' " .  $m[3] . " ')]");
+					array_push($parts, "*[@" . $m[1] . " and contains(concat(' ',normalize-space(@" . $m[1] . "),' '),' " .  $m[3] . " ')]");
 				} elseif($m[2] == "|" || $m[2] == '^') {
 					//attribute starts with
-					array_push($parts, "[@" . $m[1] . "='" . $m[3] . "' or starts-with(@" . $m[1] . ",'" . $m[3] . "')]");
+					array_push($parts, "*[@" . $m[1] . "='" . $m[3] . "' or starts-with(@" . $m[1] . ",'" . $m[3] . "')]");
 				} elseif($m[2] == "!") {
 					//attribute not equal to
-					array_push($parts, "[@" . $m[1] . "!='" . $m[3] . "']");
+					array_push($parts, "*[@" . $m[1] . "!='" . $m[3] . "']");
 				} else {
 					//attribute equal to
-					array_push($parts, "[@" . $m[1] . "='" . $m[3] . "']");
+					array_push($parts, "*[@" . $m[1] . "='" . $m[3] . "']");
 				}
 				//remove query match
 				$query = substr($query, strlen($m[0]));
