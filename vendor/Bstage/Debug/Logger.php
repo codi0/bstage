@@ -21,6 +21,12 @@ class Logger {
 		if(!$this->filePath) {
 			throw new \Exception("Invalid log file path");
 		}
+		//get file dir
+		$dir = dirname($this->filePath);
+		//create dir?
+		if($dir[0] === '/' && !is_dir($dir)) {
+			mkdir($dir, 0755, true);
+		}
 	}
 
 	public function log($level, $message, array $context = array()) {

@@ -186,7 +186,27 @@ class Node {
      * @return $this
      */
 	public function setInner($data) {
-		return $this->children()->set($data);
+		//replace children?
+		if($this->hasChildren()) {
+			return $this->children()->set($data);
+		}
+		//insert child
+		return $this->insertChild($data);
+	}
+
+    /**
+     * Get or set innerHTML of matching node(s)
+     *
+     * @param  mixed $data
+     * @return string|$this
+     */
+	public function innerHTML($data = null) {
+		//set html?
+		if($data !== null) {
+			return $this->setInner($data);
+		}
+		//return
+		return $this->getInner();
 	}
 
     /**
@@ -583,19 +603,22 @@ class Node {
 	}
 
     /**
-     * Select parent node
+     * Check if node(s) have children
      *
-     * @param  integer $num
-     * @param  boolean $inc
-     * @return $this
+     * @return boolean
      */
-	public function parent($num=1, $inc=false) {
-		//set level
-		$this->level = $this->level + (int) $num;
-		//include all levels?
-		$this->levelInc = (bool) $inc;
+	public function hasChildren() {
+		//set vars
+		$res = false;
+		//loop through nodes
+		foreach($this->initNode() as $node) {
+			//children found?
+			if($node->childNodes->length > 0) {
+				$res = true;
+			}
+		}
 		//return
-		return $this;
+		return $res;
 	}
 
     /**
@@ -608,6 +631,22 @@ class Node {
 	public function children($num=1, $inc=false) {
 		//set level
 		$this->level = $this->level - (int) $num;
+		//include all levels?
+		$this->levelInc = (bool) $inc;
+		//return
+		return $this;
+	}
+
+    /**
+     * Select parent node
+     *
+     * @param  integer $num
+     * @param  boolean $inc
+     * @return $this
+     */
+	public function parent($num=1, $inc=false) {
+		//set level
+		$this->level = $this->level + (int) $num;
 		//include all levels?
 		$this->levelInc = (bool) $inc;
 		//return
@@ -671,14 +710,12 @@ class Node {
 			//prepare nodes
 			if(!$node instanceOf \DOMNodeList) {
 				if($node !== (array) $node) {
-					$node = array($node);
+					$node = array( $node );
 				}
 			}
 			//loop through array
 			foreach($node as $old) {
-				if($old->nodeType == 1 || trim($old->nodeValue)) {
-					$res[] = $old;
-				}
+				$res[] = $old;
 			}
 		}
 		//return

@@ -62,8 +62,8 @@ class Composer {
      */
 	protected $env = array(
 		'COMPOSER_VENDOR_DIR' => '%base_dir%/vendor',
-		'COMPOSER_BIN_DIR' => '%vendor_dir%/bin',
 		'COMPOSER_HOME' => '%vendor_dir%/composer',
+		'COMPOSER_BIN_DIR' => '%composer_dir%/bin',
 		'COMPOSER_CACHE_DIR' => '%composer_dir%/cache',
 		'COMPOSER' => '%base_dir%/composer.json',
 		'COMPOSER_PROCESS_TIMEOUT' => null,
@@ -157,10 +157,16 @@ class Composer {
 	public function setup($destDir='', $clearCache=false) {
 		//set vars
 		$composerFile = $this->env['COMPOSER'];
-		$lockFile = str_replace('.json', '.lock', $this->env['COMPOSER']);
-		//setup required?
-		if(!is_file($composerFile) || is_file($lockFile)) {
+		$lockFile = str_replace('.json', '.lock', $composerFile);
+		//has composer.json?
+		if(!is_file($composerFile)) {
 			return null;
+		}
+		//has up to date lock file?
+		if(is_file($lockFile)) {
+			if(filemtime($lockFile) >= filemtime($composerFile)) {
+				return null;
+			}
 		}
 		//run install
 		$res = $this->installDeps();
@@ -172,6 +178,8 @@ class Composer {
 		if($clearCache) {
 			$this->clearCache();
 		}
+		//touch lock
+		touch($lockFile);
 		//return
 		return $res;
 	}

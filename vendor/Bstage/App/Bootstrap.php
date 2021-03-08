@@ -54,7 +54,9 @@ function bstage($name=null, $callback=null) {
 				], $opts));
 			},
 			'composer' => function(array $opts, $app) {
-				return new \Bstage\App\Composer($opts);
+				return new \Bstage\App\Composer(array_merge([
+					'baseDir' => $app->meta('app_dir'),
+				], $opts));
 			},
 			'config' => function(array $opts, $app) {
 				return new \Bstage\Container\Config(array_merge([

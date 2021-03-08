@@ -86,13 +86,20 @@ class Kernel {
 		if($this->meta['autoload']) {
 			spl_autoload_register([ $this, 'autoload' ]);
 		}
-		//load app module
-		$this->module($this->meta['name'], [
-			'path' => $this->meta['app_dir'],
-		]);
+		try {
+			//load app module
+			$this->module($this->meta['name']);
+		} catch (\Exception $e) {
+			echo $e->getMessage();
+			exit();
+		}
 		//handle errors?
 		if(isset($this->errorHandler)) {
 			$this->errorHandler->handle();
+		}
+		//use composer?
+		if(isset($this->composer)) {
+			$this->composer->setup();
 		}
 	}
 

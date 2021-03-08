@@ -175,6 +175,10 @@ class Config {
 		//set vars
 		$coreData = $this->data;
 		$coreFile = $this->dir . '/' . $this->fileNames[0] . '.php';
+		//create dir?
+		if($this->dir[0] === '/' && !is_dir($this->dir)) {
+			mkdir($this->dir, 0755, true);
+		}
 		//loop through files
 		foreach($this->fileNames as $key) {
 			//non-core file?
