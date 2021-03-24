@@ -167,7 +167,7 @@ abstract class AbstractDb {
 			return false;
 		}
 		//return
-		return $this->insertId();
+		return $this->insertId() ?: true;
 	}
 
 	public function update($table, array $set, array $where=[]) {

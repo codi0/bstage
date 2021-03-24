@@ -96,7 +96,7 @@ class Orm {
 			//loop through options
 			foreach($opts as $k => $v) {
 				//not default?
-				if(!isset($defaults[$k])) {
+				if(!array_key_exists($k, $defaults)) {
 					$opts['query'][$k] = $v;
 					unset($opts[$k]);
 				}
@@ -366,6 +366,10 @@ class Orm {
 		//is collection?
 		if($model instanceof Collection) {
 			return $model;
+		}
+		//is proxy?
+		if($model instanceof Proxy) {
+			$model = $model->__object(true);
 		}
 		//get hash
 		$hash = spl_object_hash($model);

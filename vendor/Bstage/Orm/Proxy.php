@@ -52,8 +52,8 @@ class Proxy {
 		return $this->__create()->$method(...$args);
 	}
 
-	public function __object() {
-		return $this->model;
+	public function __object($create=false) {
+		return $create ? $this->__create() : $this->model;
 	}
 
 	public function __reference($model, $property) {

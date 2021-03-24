@@ -142,6 +142,28 @@ class Crypt {
 		return $nonce;
 	}
 
+	public function number($length=16) {
+		//generate nonce
+		$nonce = $this->nonce($length*20);
+		//numbers only
+		$nonce = preg_replace('/[^0-9]/i', '', $nonce);
+		$nonce = ltrim($nonce, '0');
+		$nonce = substr($nonce, 0, $length);
+		//return
+		return $nonce;
+	}
+
+	public function uuid($data = null) {
+		//generate nonce
+		$nonce = $this->nonce(16, true);
+		//set version to 0100
+		$nonce[6] = chr(ord($nonce[6]) & 0x0f | 0x40);
+		//set bits 6-7 to 10
+		$nonce[8] = chr(ord($nonce[8]) & 0x3f | 0x80);
+		//output as uuid
+		return vsprintf('%s%s-%s-%s-%s-%s%s%s', str_split(bin2hex($nonce), 4));
+	}
+
 	public function digest($input, $hash='sha256', $raw=false) {
 		//valid digest?
 		if(($digest = openssl_digest($input, $hash, $raw)) === false) {

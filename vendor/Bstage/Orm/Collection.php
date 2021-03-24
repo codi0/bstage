@@ -6,6 +6,7 @@ class Collection extends \ArrayObject {
 
 	protected $_name = '';
 	protected $_inject = [];
+	protected $_dirty = false;
 
 	protected $_orm = null;
 	protected $_ormOpts = [];
@@ -66,14 +67,8 @@ class Collection extends \ArrayObject {
 		if($this->_ormOpts) {
 			$this->lazyLoad();
 		}
-		//create model?
-		if($this->_orm && is_array($model)) {
-			$model = $this->_orm->get($this->_name, [
-				'data' => $model,
-			]);
-		}
 		//add to array
-		$this[] = $model;
+		$this[] = $this->createModel($model);
 		//return
 		return true;
 	}
@@ -99,16 +94,13 @@ class Collection extends \ArrayObject {
 	}
 
 	public function inject($data) {
-		//manager set?
-		if(!$this->_orm) {
-			throw new \Exception("ORM not found");
+		//save for later
+		foreach($data as $prop => $value) {
+			$this->_inject[$prop] = $value;
 		}
-		//lazy injection?
-		if($this->_ormOpts) {
-			foreach($data as $prop => $value) {
-				$this->_inject[$prop] = $value;
-			}
-		} else {
+		//inject now?
+		if(!$this->_ormOpts) {
+			//loop through models
 			foreach($this as $model) {
 				$this->_orm->mapper($model)->inject($data);
 			}
@@ -118,6 +110,9 @@ class Collection extends \ArrayObject {
 	public function save(array $hashes=[]) {
 		//should save?
 		if(!$this->_ormOpts) {
+			//mark as not dirty
+			$this->_dirty = false;
+			//loop through models
 			foreach($this as $model) {
 				$this->_orm->save($model, $hashes);
 			}
@@ -131,12 +126,18 @@ class Collection extends \ArrayObject {
 		if(!$this->_orm) {
 			throw new \Exception("ORM not found");
 		}
+		//mark as not dirty
+		$this->_dirty = false;
 		//loop through models
 		foreach($this as $model) {
 			$this->_orm->delete($model, $hashes);
 		}
 		//return
 		return true;
+	}
+
+	public function dirty() {
+		return $this->_dirty;
 	}
 
 	public function offsetIsset($key) {
@@ -162,6 +163,8 @@ class Collection extends \ArrayObject {
 		if($this->_ormOpts) {
 			$this->lazyLoad();
 		}
+		//create model
+		$val = $this->createModel($val);
 		//call parent
 		return parent::offsetSet($key, $val);
 	}
@@ -198,6 +201,8 @@ class Collection extends \ArrayObject {
 		if(!$this->_ormOpts) {
 			return;
 		}
+		//clear opts
+		$this->_ormOpts = [];
 		//get collection as array
 		$models = $this->_orm->get($this->_name, array_merge($this->_ormOpts, [
 			'lazy' => false,
@@ -206,15 +211,29 @@ class Collection extends \ArrayObject {
 		]));
 		//loop through models
 		foreach($models as $m) {
-			//store model
-			$this[] = $m;
-			//inject data?
-			if($this->_inject) {
-				$this->_orm->mapper($m)->inject($this->_inject);
-			}
+			$this[] = $this->createModel($m);
 		}
-		//clear opts
-		$this->_ormOpts = [];
+	}
+
+	protected function createModel($model) {
+		//create model?
+		if(is_array($model)) {
+			$model = $this->_orm->get($this->_name, [
+				'data' => $model,
+			]);
+		}
+		//valid model?
+		if(!is_object($model)) {
+			throw new \Exception("Unable to create model");
+		}
+		//mark as dirty
+		$this->_dirty = true;
+		//inject data?
+		if($this->_inject) {
+			$this->_orm->mapper($model)->inject($this->_inject);
+		}
+		//return
+		return $model;
 	}
 
 }

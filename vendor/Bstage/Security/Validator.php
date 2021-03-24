@@ -241,6 +241,19 @@ class Validator {
 		return true;
 	}
 
+	protected function _ruleUuid($value, array $params, $isFilter) {
+		//filter input?
+		if($isFilter) {
+			return preg_replace('/[^a-f0-9\-]/i', '', $value);
+		}
+		//validation failed?
+		if(!preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89AB][a-f0-9]{3}-[a-f0-9]{12}$/i', $value)) {
+			return $this->addError(':label must be a UUID'); 
+		}
+		//passed
+		return true;
+	}
+
 	protected function _ruleBool($value, array $params, $isFilter) {
 		//filter input?
 		if($isFilter) {
@@ -278,6 +291,54 @@ class Validator {
 		}
 		//passed
 		return true;
+	}
+
+	protected function _rulePhone($value, array $params, $isFilter) {
+		//filter input?
+		if($isFilter) {
+			//remove optional characters
+			$value = str_replace('-', '', $value);
+			$value = preg_replace('/\s+/', '', $value);
+			//check country code
+			$cc = null;
+			$hasCode = strpos($value, '+') === 0;
+			//guess country code?
+			if($cc === null) {
+				//is uk?
+				if(strpos($value, '07') === 0 && strlen($value) == 11) {
+					$cc = '+44';
+				}
+			}	
+			//add country code?
+			if(!$hasCode && $cc) {
+				$value = $cc . preg_replace('/^0+/', '', $value);
+			}
+			//return
+			return $value;
+		}
+		//set strict flag
+		$strict = in_array('cc', $params) ? '' : '?';
+		//valid format?
+		if(!preg_match('/^\+' . $strict . '[0-9]{6,14}$/', $value)) {
+			return $this->addError(':label must be a valid phone number'); 
+		}
+		//passed
+		return true;
+	}
+
+	protected function _rulePhoneOrEmail($value, array $params, $isFilter) {
+		//set vars
+		$method = '_rulePhone';
+		//looks like email?
+		if(strpos($value, '@') !== false || !preg_match('/[0-9]/', $value)) {
+			$method = '_ruleEmail';
+		}
+		//is empty?
+		if(empty($value)) {
+			return $isFilter ? '' : $this->addError(':label must be a valid email address or phone number'); 
+		}
+		//return
+		return $this->$method($value, $params, $isFilter);
 	}
 
 	protected function _ruleUrl($value, array $params, $isFilter) {

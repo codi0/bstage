@@ -8,6 +8,7 @@ class TableRow extends \ArrayObject {
 	protected $_table;
 	protected $_primaryKey;
 	protected $_changes = [];
+	protected $_isNew = null;
 
 	public function __construct(array $opts=[]) {
 		//get data
@@ -28,10 +29,18 @@ class TableRow extends \ArrayObject {
 		if(!$this->_primaryKey) {
 			$this->_primaryKey = $data ? array_keys($data)[0] : 'id';
 		}
+		//is new?
+		if($this->_isNew === null) {
+			$this->_isNew = !$this->pkVal();
+		}
 	}
 
 	public function toArray() {
 		return (array) $this;
+	}
+
+	public function isNew() {
+		return $this->_isNew;
 	}
 
 	public function pkCol() {
@@ -48,8 +57,22 @@ class TableRow extends \ArrayObject {
 		$id = $this->pkVal();
 		//sync source data?
 		if($this->_db && $this->_changes) {
-			//already has ID?
-			if(!empty($id)) {
+			//insert or update?
+			if($this->_isNew) {
+				//valid data?
+				if($data = $this->formatData((array) $this, $allowedCols)) {
+					//query succeeded?
+					if(!$this->_db->insert($this->_table, $data)) {
+						return false;
+					}
+					//set primary key?
+					if(empty($id)) {
+						$id = $this[$this->_primaryKey] = $this->_db->insertId();
+					}
+					//no longer new
+					$this->_isNew = false;
+				}
+			 } else {
 				//loop through changes
 				foreach($this->_changes as $col) {
 					$data[$col] = $this[$col];
@@ -60,16 +83,6 @@ class TableRow extends \ArrayObject {
 					if(!$this->_db->update($this->_table, $data, [ $this->_primaryKey => $id ])) {
 						return false;
 					}
-				}
-			} else {
-				//valid data?
-				if($data = $this->formatData((array) $this, $allowedCols)) {
-					//query succeeded?
-					if(!$this->_db->insert($this->_table, $data)) {
-						return false;
-					}
-					//set primary key
-					$id = $this[$this->_primaryKey] = $this->_db->insertId();
 				}
 			}
 		}

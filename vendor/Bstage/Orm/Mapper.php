@@ -196,10 +196,15 @@ class Mapper {
 		}
 		//create model
 		$this->model = new $this->modelClass($data);
-		//add proxy reference
+		//add relation references
 		foreach($this->relations as $prop => $rel) {
+			//is proxy?
 			if($rel instanceof Proxy) {
 				$rel->__reference($this->model, $prop);
+			}
+			//is collection?
+			if($rel instanceof Collection) {
+				$rel->inject([ $this->name => $this->model ]);
 			}
 		}
 		//inject into
@@ -224,12 +229,12 @@ class Mapper {
 		if($this->autoInsert) {
 			//get ID?
 			if(is_object($this->data)) {
-				$pkVal = $this->data->pkVal();
+				$isNew = $this->data-isNew();
 			} else {
-				$pkVal = isset($this->data['id']) ? $this->data['id'] : null;
+				$isNew = !(isset($this->data['id']) && $this->data['id']);
 			}
 			//can save?
-			if(!$pkVal) {
+			if(!$isNew) {
 				$this->save();
 			}
 		}
@@ -280,7 +285,7 @@ class Mapper {
 		}
 		//has ID?
 		if(is_object($this->data)) {
-			$isNew = !$this->data->pkVal();
+			$isNew = $this->data->isNew();
 		} else {
 			$isNew = !(isset($this->data['id']) && $this->data['id']);
 		}
@@ -301,25 +306,33 @@ class Mapper {
 			}
 			//is relation?
 			if($meta['relation']) {
+				//set vars
+				$belongsTo = ($meta['relation'] === 'belongsTo');
+				$isDirty = $modelVal && method_exists($modelVal, 'dirty') && $modelVal->dirty();
+				//skip relation?
+				if(!$modelVal || (!$belongsTo && !$isDirty)) {
+					continue;
+				}
 				//cascade save?
-				if($modelVal && $meta['cascade']) {
-					//on insert?
-					if($isNew && in_array('insert', $meta['cascade'])) {
-						$cascade[] = $modelVal;
+				if($meta['cascade']) {
+					//check cascade type
+					$isInsert = $isNew && in_array('insert', $meta['cascade']);
+					$isUpdate = !$isNew && in_array('update', $meta['cascade']);
+					//add to cascade?
+					if($isInsert || $isUpdate) {
+						$cascade[] = [
+							'col' => $col,
+							'model' => $modelVal,
+							'before' => $belongsTo,
+						];
 					}
-					//on update?
-					if(!$isNew && in_array('update', $meta['cascade'])) {
-						$cascade[] = $modelVal;
-					}
-				}	
+				}
 				//set foreign key?
-				if($meta['relation'] === 'belongsTo' && is_object($modelVal)) {
-					//get related ID
+				if($belongsTo) {
+					//get ID
 					$modelVal = $modelVal->id;
 					//save value
 					$meta['save'] = true;
-				} else {
-					continue;
 				}
 			}
 			//has state changed?
@@ -330,7 +343,13 @@ class Mapper {
 			}
 			//filter data?
 			if($this->validator && $meta['filter']) {
-				$modelVal = $this->validator->filter($modelVal, $meta['filter']);
+				//filter value
+				$tmp = $this->validator->filter($modelVal, $meta['filter']);
+				//update property?
+				if($tmp !== $modelVal) {
+					$modelVal = $tmp;
+					$this->inject([ $prop => $modelVal ]);
+				}
 			}
 			//validate data?
 			if($this->validator && $meta['validate']) {
@@ -341,6 +360,7 @@ class Mapper {
 			}
 			//save data?
 			if($result && $meta['save']) {
+				//flag for update
 				$update[$col] = [
 					'value' => $modelVal,
 					'format' => $meta['save'],
@@ -353,34 +373,57 @@ class Mapper {
 			$this->errors = $this->validator->getErrors();
 		}
 		//can save?
-		if($result && $update && is_object($this->data)) {
-			//loop through data
-			foreach($update as $k => $v) {
-				//call onSave?
-				if($v['onSave']) {
-					$v['value'] = $this->hook($v['onSave'], $v['value']);
-				}
-				//convert format?
-				if(is_string($v['format'])) {
-					$v['value'] = $this->storeAs($v['format'], $v['value']);
-				}
-				//update data?
-				if($v['value'] !== null) {
-					$this->data[$k] = $v['value'];
+		if($result && ($update || $cascade)) {
+			//cascade before
+			foreach($cascade as $c) {
+				//is before?
+				if($c['before']) {
+					//save model
+					$this->orm->save($c['model'], $hashes);
+					//set fk value?
+					if(isset($update[$c['col']])) {
+						$update[$c['col']]['value'] = $c['model']->id;
+					}
 				}
 			}
-			//save successful?
-			if($result = $this->data->save($allowed)) {
-				//insert ID?
-				if($isNew) {
-					//get ID property
-					$prop = $this->property($this->data->pkCol());
-					//inject ID
-					$this->inject([ $prop => $result ]);
+			//save model?
+			if($update && is_object($this->data)) {
+				//loop through data
+				foreach($update as $k => $v) {
+					//call onSave?
+					if($v['onSave']) {
+						$v['value'] = $this->hook($v['onSave'], $v['value']);
+					}
+					//convert format?
+					if(is_string($v['format'])) {
+						$v['value'] = $this->storeAs($v['format'], $v['value']);
+					}
+					//update data?
+					if($v['value'] !== null) {
+						$this->data[$k] = $v['value'];
+					}
 				}
-				//cascade save
-				foreach($cascade as $c) {
-					$this->orm->save($c, $hashes);
+				//successfully saved?
+				if($result = $this->data->save($allowed)) {
+					//insert ID?
+					if($isNew) {
+						//get ID property
+						$prop = $this->property($this->data->pkCol());
+						//inject ID
+						$this->inject([ $prop => $result ]);
+					}
+				}
+			}
+			//cascade after
+			foreach($cascade as $c) {	
+				//is after?
+				if(!$c['before']) {
+					//get mapper
+					$mapper = $this->orm->mapper($c['model']);
+					//inject object
+					$mapper->inject([ $this->name => $this->model() ]);
+					//save cascade
+					$mapper->save($hashes);
 				}
 			}
 		}
@@ -497,6 +540,7 @@ class Mapper {
 			$meta = $this->fields[$prop];
 			$collection = (stripos($meta['relation'], 'many') !== false);
 			$with = isset($this->with[$prop]) ? $this->with[$prop] : [];
+			$isParent = !in_array($meta['relation'], [ 'belongsTo', 'manyMany' ]);
 			//run query?
 			if(is_scalar($val)) {
 				//get key
@@ -536,6 +580,7 @@ class Mapper {
 				'collection' => $collection,
 				'eager' => $meta['eager'],
 				'lazy' => $meta['lazy'],
+				//'parent' => $isParent ? $this->model() : null,
 			], $with));
 		}
 		//return

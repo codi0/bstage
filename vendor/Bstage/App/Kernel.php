@@ -97,9 +97,9 @@ class Kernel {
 		if(isset($this->errorHandler)) {
 			$this->errorHandler->handle();
 		}
-		//use composer?
+		//sync composer?
 		if(isset($this->composer)) {
-			$this->composer->setup();
+			$this->composer->sync();
 		}
 	}
 
@@ -322,6 +322,15 @@ class Kernel {
 
 	public function input($name, $method=null) {
 		return $this->input->find($method, $name);
+	}
+
+	public function cookie($name, $value=false, array $opts=[]) {
+		//retrieve value?
+		if($value === false) {
+			return $this->cookies->get($name, $opts);
+		}
+		//save value
+		return $this->cookies->set($name, $value, $opts);
 	}
 
 	public function form($name, $method='post', $action='') {

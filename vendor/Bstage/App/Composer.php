@@ -126,6 +126,53 @@ class Composer {
 	}
 
     /**
+     * Sync with composer.json dependencies
+     *
+	 * @param  array $opts
+     * @return array|null
+     */
+	public function sync(array $opts=[]) {
+		//set opts
+		$opts = array_merge([
+			'dir' => '',
+			'clear' => false,
+			'force' => false,
+		], $opts);
+		//set vars
+		$composerFile = $this->env['COMPOSER'];
+		$lockFile = str_replace('.json', '.lock', $composerFile);
+		$loadFile = $this->env['COMPOSER_VENDOR_DIR'] . '/autoload.php';
+		//has composer file?
+		if(!is_file($composerFile)) {
+			return null;
+		}
+		//load autoloader?
+		if(is_file($loadFile)) {
+			require_once($loadFile);
+		}
+		//has latest lock file?
+		if(!$opts['force'] && is_file($lockFile)) {
+			if(filemtime($lockFile) >= filemtime($composerFile)) {
+				return null;
+			}
+		}
+		//run update
+		$res = $this->updateDeps();
+		//move to dir?
+		if($opts['dir']) {
+			$this->moveDeps($opts['dir']);
+		}
+		//clear cache?
+		if($opts['clear']) {
+			$this->clearCache();
+		}
+		//touch lock
+		touch($lockFile);
+		//return
+		return $res;
+	}
+
+    /**
      * Returns list of installed packages
 	 *
      * @return array
@@ -145,43 +192,6 @@ class Composer {
 		}
 		//return
 		return $packages;
-	}
-
-    /**
-     * Quick setup for composer install
-     *
-	 * @param  string $destDir
-	 * @param  boolean $clearCache
-     * @return array|null
-     */
-	public function setup($destDir='', $clearCache=false) {
-		//set vars
-		$composerFile = $this->env['COMPOSER'];
-		$lockFile = str_replace('.json', '.lock', $composerFile);
-		//has composer.json?
-		if(!is_file($composerFile)) {
-			return null;
-		}
-		//has up to date lock file?
-		if(is_file($lockFile)) {
-			if(filemtime($lockFile) >= filemtime($composerFile)) {
-				return null;
-			}
-		}
-		//run install
-		$res = $this->installDeps();
-		//move to dir?
-		if($destDir) {
-			$this->moveDeps($destDir);
-		}
-		//clear cache?
-		if($clearCache) {
-			$this->clearCache();
-		}
-		//touch lock
-		touch($lockFile);
-		//return
-		return $res;
 	}
 
     /**
